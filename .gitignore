@@ -7,4 +7,6 @@ build/
 dist/
 FISH/
 artifacts/
+pipeline_runs/
+neural_runs/
 *.fish-view.json

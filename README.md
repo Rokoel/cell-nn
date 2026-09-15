@@ -1,6 +1,12 @@
 # FISH Viewer
 
-A Python desktop viewer for Imaris microscopy stacks, saved cell surfaces, and measurement annotations. Uses **PySide6 + PyVista/VTK** on Linux and Windows. Images and original annotations are opened read-only.
+A Python desktop viewer with classical and neural 3D cell contour pipelines for Imaris microscopy stacks. Uses **PySide6 + PyVista/VTK** on Linux and Windows. Images and original annotations are opened read-only.
+
+For automatic contours, open **Contour pipeline…** in the viewer toolbar. The reference folder is selected by default when present. The panel provides automatic channel selection, 3D shape filtering, parameter tuning, live graphs, and prediction overlays. See the [pipeline guide](docs/contour-pipeline.md) for instructions, score definitions, and measured limitations.
+
+For the neural experiment, open **Neural training…**. The new **StarDist 3D** workflow trains on sparse manual contours, separates acquisition groups for training/validation/testing, saves checkpoints, and displays live losses and contour scores. See the [neural training guide](docs/neural-training.md). Optional dependencies are already installed on this machine.
+
+A [trained reference model and report](artifacts/neural-extended/neural-train-20260915-025102-143388/report.json) are ready: mean Dice **0.736**, detecting **7/7 complete annotated test cells**. Open the report using **Neural training… → Open saved run…**. The model also produces many unscored contours, so precision remains unknown; see the guide for the comparison and limitations.
 
 ## Start on this Linux machine
 
@@ -79,7 +85,7 @@ Display adjustments never change intensity arrays or source files. Display setti
 - Empty manual contour editing objects are ignored. Nonempty contours without a saved mesh appear as 3D closed curves and dashed outlines in the intersecting 2D slice; no cell surface is invented between them.
 - XML scenes embedded at recognized HDF5 scene paths are also read. Newer proprietary binary `Scene`/`Scene8` object tables are **not supported**; the app reports this instead of silently hiding missing annotations. The supplied HDF5 files use external `.imx` scenes.
 
-The supplied reference files represent marked locations as measurement endpoints. Both A and B remain labeled endpoints; the app does not infer which is a signal and which is a border. Bright puncta are visible in their original image channels. Dedicated Imaris Spots/Filaments schemas, standalone `.lsm` browsing, annotation editing, automatic detection, and neural-network training are outside this first viewer version.
+The supplied reference files represent marked locations as measurement endpoints. Both A and B remain labeled endpoints; the app does not infer which is a signal and which is a border. Bright puncta are visible in their original image channels. Classical and neural pipelines generate cell contours. Signal detection, annotation editing, standalone `.lsm` browsing, and dedicated Imaris Spots/Filaments schemas are not implemented.
 
 Keep each `.imx` with the image it references. Four supplied scenes reference missing `.ims` images; these remain listed with a missing-image indication.
 
@@ -90,13 +96,14 @@ Keep each `.imx` with the image it references. Four supplied scenes reference mi
 .venv/bin/python -m pytest -q
 .venv/bin/python scripts/audit_files.py FISH --pixels --output artifacts/file-audit.json
 .venv/bin/python scripts/smoke_viewer.py
+.venv/bin/python scripts/smoke_viewer.py --pipeline
 ```
 
 On Windows, substitute `.venv\Scripts\python.exe`. The unit/GUI tests use offscreen Qt for 2D; integration tests skip when FISH data is absent. The desktop smoke test opens and closes a real window to exercise OpenGL volume rendering, channel visibility, full-resolution sampling, surfaces, selection, and saved settings. It saves screenshots in `artifacts/`. It expects the local reference files.
 
-The complete collection audit checks every image container and scene, optionally decoding all channels, time points, and resolution levels. `artifacts/file-audit.json` records results and missing-image paths. Native Windows execution has not been tested in this Linux environment.
+Add `--pipeline` to the desktop smoke test to run two real GUI tuning trials and check generated 2D/3D contours. The complete collection audit checks every image container and scene, optionally decoding all channels, time points, and resolution levels. `artifacts/file-audit.json` records results and missing-image paths. Native Windows execution has not been tested in this Linux environment.
 
-Local validation passed **17 tests** and the real Linux desktop rendering smoke test. The full audit successfully decoded **1,656 channel volumes from 392 image files** and parsed **396 scenes**, containing **3,519 surfaces**, **3,550 measurement groups**, and **4 unmeshed contour curves**. No decoding or scene parsing errors were found; four referenced image files are absent from the supplied collection. Scene totals include alternative scenes that reference the same image.
+Local validation passed **36 tests**, including real StarDist CPU training, checkpoint reload, sparse-label loss gradients, and GUI worker integration. The real Linux desktop checks also cover live GPU training, saved-model application, graphs, and neural 2D/3D overlays. Other tests cover automatic channel selection, physical 3D shape measurements, annotation matching, missing and unknown cells, acquisition splitting, edge exclusion, cancellation, and saved predictions. The earlier full collection audit successfully decoded **1,656 channel volumes from 392 image files** and parsed **396 scenes**, containing **3,519 surfaces**, **3,550 measurement groups**, and **4 unmeshed contour curves**. No decoding or scene parsing errors were found; four referenced image files are absent from the supplied collection. Scene totals include alternative scenes that reference the same image.
 
 Inspect a dataset without launching Qt:
 

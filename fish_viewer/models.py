@@ -17,6 +17,7 @@ class Channel:
     visible: bool = True
     brightness: float = 0.0
     contrast: float = 1.0
+    excitation_nm: float | None = None
 
     def normalize(self, data: np.ndarray) -> np.ndarray:
         result = (data.astype(np.float32) - self.low) / max(self.high - self.low, 1e-9)
@@ -35,6 +36,7 @@ class Surface:
     opacity: float = 0.32
     time: int = 0
     visible: bool = True
+    source: str = 'manual'
 
 
 @dataclass

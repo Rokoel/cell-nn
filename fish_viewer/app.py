@@ -218,6 +218,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._jobs = set()
         self._saved_states = {}
         self._pending_load = False
+        self.pipeline_panel = None
+        self.pipeline_dock = None
+        self.neural_panel = None
+        self.neural_dock = None
+        self._pipeline_archives = {}
+        self._source_visibility = {'manual': True, 'prediction': True}
         self.thread_pool = QtCore.QThreadPool(self)
         self.thread_pool.setMaxThreadCount(2)
         self.refresh_timer = QtCore.QTimer(self)
@@ -255,6 +261,8 @@ class MainWindow(QtWidgets.QMainWindow):
         toolbar.addAction('Save view…', self.save_view)
         toolbar.addAction('Load view…', self.load_view)
         toolbar.addSeparator()
+        toolbar.addAction('Contour pipeline…', self.show_pipeline)
+        toolbar.addAction('Neural training…', self.show_neural)
         toolbar.addAction('Help', self.show_help)
         QtGui.QShortcut(QtGui.QKeySequence('Tab'), self, activated=lambda: self.switch_mode(not self.mode_3d.isChecked()))
         QtGui.QShortcut(QtGui.QKeySequence('Right'), self, activated=lambda: self.step_slice(1))
@@ -504,10 +512,34 @@ class MainWindow(QtWidgets.QMainWindow):
         def progress(text):
             if generation == self._generation:
                 self.statusBar().showMessage(text)
-        self.run_job(lambda report: load_dataset(entry, time, level, report), complete, failed, progress)
+        archive = self._pipeline_archives.get((str(entry.image.resolve()), time))
+        def read_with_predictions(report):
+            dataset = load_dataset(entry, time, level, report)
+            if archive:
+                try:
+                    from .pipeline.runner import read_prediction
+                    surfaces, metadata = read_prediction(archive)
+                    if metadata.get('image_name') != entry.image.name:
+                        raise ValueError('The predictions belong to another image.')
+                    if level == 0:
+                        import hashlib
+                        fingerprint = hashlib.sha256()
+                        fingerprint.update(str(dataset.volumes[0].shape).encode())
+                        for volume in dataset.volumes:
+                            fingerprint.update(memoryview(np.ascontiguousarray(volume)))
+                        if fingerprint.hexdigest() != metadata['fingerprint']:
+                            raise ValueError('Image pixels differ from the input used to generate these predictions.')
+                    dataset.scene.surfaces.extend(surfaces)
+                except Exception as exc:
+                    dataset.scene.warnings.append(f'Cannot load pipeline contours: {exc}')
+            return dataset
+        self.run_job(read_with_predictions, complete, failed, progress)
 
     def set_dataset(self, dataset, state=None):
         self.dataset = dataset
+        for surface in dataset.scene.surfaces:
+            if not self._source_visibility.get(surface.source, True):
+                surface.visible = False
         self._volume_dirty = True
         self._volume_dataset = None
         self.heading.setText(dataset.metadata.path.name)
@@ -838,8 +870,72 @@ class MainWindow(QtWidgets.QMainWindow):
             'Save view / Load view store display settings separately. Screenshots export PNG. '
             'Original images and annotation files are never modified.')
 
+    def show_pipeline(self):
+        if self.pipeline_panel is None:
+            from .pipeline.gui import PipelinePanel
+            self.pipeline_dock = QtWidgets.QDockWidget('Classical contour pipeline', self)
+            self.pipeline_dock.setObjectName('contourPipeline')
+            self.pipeline_panel = PipelinePanel(self)
+            self.pipeline_dock.setWidget(self.pipeline_panel)
+            self.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self.pipeline_dock)
+            self.pipeline_dock.setMinimumHeight(380)
+            self.resizeDocks([self.pipeline_dock], [560], QtCore.Qt.Orientation.Vertical)
+            if self.screen().availableGeometry().height() < 900:
+                self.pipeline_dock.setFloating(True)
+                self.pipeline_dock.resize(min(1200, self.screen().availableGeometry().width()), 650)
+        self.pipeline_dock.show()
+        self.pipeline_dock.raise_()
+
+    def show_neural(self):
+        if self.neural_panel is None:
+            from .neural.gui import NeuralPanel
+            self.neural_dock = QtWidgets.QDockWidget('StarDist 3D neural training', self)
+            self.neural_dock.setObjectName('neuralTraining')
+            self.neural_panel = NeuralPanel(self)
+            self.neural_dock.setWidget(self.neural_panel)
+            self.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self.neural_dock)
+            self.resizeDocks([self.neural_dock], [560], QtCore.Qt.Orientation.Vertical)
+            if self.screen().availableGeometry().height() < 900:
+                self.neural_dock.setFloating(True)
+                self.neural_dock.resize(min(1200,self.screen().availableGeometry().width()),650)
+        if self.pipeline_dock:
+            self.pipeline_dock.hide()
+        self.neural_dock.show()
+        self.neural_dock.raise_()
+
+    def open_pipeline_prediction(self, row):
+        try:
+            image = Path(row['image']).resolve()
+            scene = Path(row['scene']) if row.get('scene') else None
+            entry = LibraryEntry(image, scene) if scene and scene.exists() else entry_for_path(image)
+            archive = Path(row['predictions'])
+            if not archive.is_file():
+                raise FileNotFoundError(f'Prediction archive is missing: {archive}')
+            self._pipeline_archives[(str(image), 0)] = archive
+            self.add_entries([entry])
+            self.load_entry(entry)
+        except Exception:
+            self.error(traceback.format_exc())
+
+    def set_surface_source_visible(self, source, visible):
+        self._source_visibility[source] = visible
+        if not self.dataset:
+            return
+        self.objects.blockSignals(True)
+        group = self.objects.topLevelItem(0)
+        for i, surface in enumerate(self.dataset.scene.surfaces):
+            if surface.source == source:
+                surface.visible = visible
+                group.child(i).setCheckState(0, QtCore.Qt.CheckState.Checked if visible else QtCore.Qt.CheckState.Unchecked)
+        self.objects.blockSignals(False)
+        self.refresh_annotations()
+
     def closeEvent(self, event):
         self._generation += 1
+        if self.pipeline_panel:
+            self.pipeline_panel.shutdown()
+        if self.neural_panel:
+            self.neural_panel.shutdown()
         self.refresh_timer.stop()
         self.thread_pool.clear()
         self.thread_pool.waitForDone()

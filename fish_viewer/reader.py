@@ -44,7 +44,8 @@ def _channel(info: dict[str, str], index: int, dtype) -> Channel:
     return Channel(info.get('Name', f'Channel {index + 1}'),
         tuple(np.clip(color[:3], 0, 1)) if len(color) >= 3 else fallback[index % len(fallback)],
         float(low), float(high), max(0.05, float(info.get('GammaCorrection', '1'))),
-        float(np.clip(float(info.get('ColorOpacity', '1')), 0, 1)))
+        float(np.clip(float(info.get('ColorOpacity', '1')), 0, 1)),
+        excitation_nm=float(info['LSMExcitationWavelength']) if info.get('LSMExcitationWavelength', '').replace('.', '', 1).isdigit() else None)
 
 
 def _geometry(info: dict[str, str], shape: tuple[int, int, int]):
