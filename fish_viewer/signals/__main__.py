@@ -1,0 +1,63 @@
+"""Signal worker entry point; stdout contains JSON progress events."""
+import argparse
+from dataclasses import replace
+import json
+import os
+from pathlib import Path
+import signal
+import sys
+import sysconfig
+
+from ..neural.__main__ import Cancellation
+from .config import SignalConfig
+
+
+def main():
+    if sys.platform.startswith('linux') and not os.environ.get('FISH_CUDA_PATH_READY'):
+        libraries=sorted((Path(sysconfig.get_paths()['purelib'])/'nvidia').glob('*/lib'))
+        if libraries:
+            environment=os.environ.copy();environment['FISH_CUDA_PATH_READY']='1'
+            environment['LD_LIBRARY_PATH']=os.pathsep.join(map(str,libraries))+os.pathsep+environment.get('LD_LIBRARY_PATH','')
+            os.execve(sys.executable,[sys.executable,'-m','fish_viewer.signals',*sys.argv[1:]],environment)
+    parser=argparse.ArgumentParser(description='Train or apply a cell-restricted 3D signal detector.')
+    parser.add_argument('--mode',choices=['audit','train','apply','controls'],required=True)
+    parser.add_argument('--cell-report',type=Path)
+    parser.add_argument('--collection-audit',type=Path)
+    parser.add_argument('--audit',type=Path)
+    parser.add_argument('--output',type=Path,default=Path('signal_runs'))
+    parser.add_argument('--model',type=Path)
+    parser.add_argument('--image',type=Path)
+    parser.add_argument('--cell-predictions',type=Path)
+    parser.add_argument('--scene',type=Path)
+    parser.add_argument('--epochs',type=int)
+    parser.add_argument('--steps',type=int)
+    parser.add_argument('--device',choices=['auto','cpu','gpu'],default='auto')
+    parser.add_argument('--cancel-file',type=Path)
+    args=parser.parse_args()
+    config=SignalConfig(device=args.device)
+    if args.epochs is not None:config=replace(config,epochs=args.epochs)
+    if args.steps is not None:config=replace(config,steps_per_epoch=args.steps)
+    config.validate()
+    cancel=Cancellation(args.cancel_file);signal.signal(signal.SIGINT,lambda *_:cancel.event.set())
+    stream=sys.stdout;sys.stdout=sys.stderr
+    def emit(event):print(json.dumps(event,allow_nan=False),file=stream,flush=True)
+    if args.mode=='audit':
+        if not args.cell_report or not args.collection_audit:parser.error('Audit requires --cell-report and --collection-audit.')
+        from .data import build_audit
+        report=build_audit(args.cell_report,args.collection_audit,args.output,config,emit,cancel)
+    elif args.mode=='controls':
+        if not args.model:parser.error('Controls require --model.')
+        from .controls import check_controls
+        report=check_controls(args.model,args.output,args.device);emit(dict(kind='finished',report=report))
+    else:
+        from .engine import train,apply
+        if args.mode=='train':
+            if not args.audit:parser.error('Training requires --audit.')
+            report=train(args.audit,args.output,config,emit,cancel)
+        else:
+            if not args.model or not args.image or not args.cell_predictions:parser.error('Application requires --model, --image and --cell-predictions.')
+            report=apply(args.image,args.scene,args.cell_predictions,args.model,args.output,config.device,emit,cancel)
+    return 0 if report['status']=='complete' else 1
+
+
+if __name__=='__main__':raise SystemExit(main())

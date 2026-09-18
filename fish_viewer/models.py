@@ -49,6 +49,7 @@ class Measurement:
     color: tuple[float, float, float] = (1.0, 0.85, 0.3)
     visible: bool = True
     all_times: bool = True
+    source: str = 'manual'
 
     @property
     def length(self) -> float:

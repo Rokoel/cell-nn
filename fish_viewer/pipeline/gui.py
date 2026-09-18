@@ -333,6 +333,9 @@ class PipelinePanel(QtWidgets.QWidget):
     def start(self):
         if self.job:
             return
+        if self.host.workflow_panel and self.host.workflow_panel.busy:
+            self.show_error('Wait for the scan workflow to finish, or cancel it first.')
+            return
         try:
             config = self.config()
             entries = self.checked_entries()

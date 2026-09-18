@@ -27,3 +27,7 @@ For the current scan, click **Auto-select contours…** below its name and choos
 To inspect training curves and existing predictions, use **Results → Open saved run…** and select the corresponding `report.json`. A running report can also be watched for live progress. The actual selected checkpoint is `best.weights.h5`; `last.weights.h5` is retained separately.
 
 See [conservative training](precision-training.md) and [balanced training](balanced-training.md) for the differences between the latest runs.
+
+## Signal detector
+
+The [signal CNN model](../artifacts/signal-fish/training/signal-train-20260919-020312-268747/model/) and its [training report](../artifacts/signal-fish/training/signal-train-20260919-020312-268747/report.json) are separate from the cell models above. It completed 37 epochs, selected epoch 22, and uses score threshold 0.995. Open it through **Find signals / signal training…**, after loading neural cell contours. See the [signal guide](signal-detection.md) for validation scope, centers/counts, and exports.

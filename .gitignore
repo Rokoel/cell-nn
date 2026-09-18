@@ -9,4 +9,6 @@ FISH/
 artifacts/
 pipeline_runs/
 neural_runs/
+workflow_runs/
+signal_runs/
 *.fish-view.json

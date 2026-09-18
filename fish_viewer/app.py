@@ -8,7 +8,7 @@ import traceback
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from .models import Dataset, LibraryEntry
+from .models import Dataset, LibraryEntry, Scene
 from .reader import entry_for_path, load_dataset, scan_library
 from .views import SliceView, VolumeView
 
@@ -222,7 +222,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pipeline_dock = None
         self.neural_panel = None
         self.neural_dock = None
+        self.signal_panel = None
+        self.signal_dock = None
+        self.workflow_panel = None
+        self.workflow_dock = None
         self._pipeline_archives = {}
+        self._signal_archives = {}
         self._source_visibility = {'manual': True, 'prediction': True}
         self.thread_pool = QtCore.QThreadPool(self)
         self.thread_pool.setMaxThreadCount(2)
@@ -311,6 +316,12 @@ class MainWindow(QtWidgets.QMainWindow):
         actions.addWidget(self.neural_report_button)
         actions.addStretch()
         center_layout.addLayout(actions)
+        self.signal_button = QtWidgets.QPushButton('Find signals / signal training…')
+        self.signal_button.clicked.connect(self.show_signals)
+        center_layout.addWidget(self.signal_button)
+        self.workflow_button = QtWidgets.QPushButton('Scan workflow / Export Imaris…')
+        self.workflow_button.clicked.connect(self.show_workflow)
+        center_layout.addWidget(self.workflow_button)
         self.warning = label('')
         self.warning.setWordWrap(True)
         self.warning.setStyleSheet('color: #edbd7c; padding: 6px; background: #30291f;')
@@ -368,6 +379,10 @@ class MainWindow(QtWidgets.QMainWindow):
             control.setChecked(True)
             control.toggled.connect(self.refresh_annotations)
             ann_layout.addWidget(control)
+        self.show_predicted_signals = QtWidgets.QCheckBox('Predicted signal centers')
+        self.show_predicted_signals.setChecked(True)
+        self.show_predicted_signals.toggled.connect(self.signal_visibility)
+        ann_layout.addWidget(self.show_predicted_signals)
         self.objects = QtWidgets.QTreeWidget()
         self.objects.setHeaderLabels(['Saved objects'])
         self.objects.itemChanged.connect(self.object_visibility)
@@ -527,6 +542,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if generation == self._generation:
                 self.statusBar().showMessage(text)
         archive = self._pipeline_archives.get((str(entry.image.resolve()), time))
+        signal_archive = self._signal_archives.get((str(entry.image.resolve()), time))
         def read_with_predictions(report):
             dataset = load_dataset(entry, time, level, report)
             if archive:
@@ -543,7 +559,16 @@ class MainWindow(QtWidgets.QMainWindow):
                             fingerprint.update(memoryview(np.ascontiguousarray(volume)))
                         if fingerprint.hexdigest() != metadata['fingerprint']:
                             raise ValueError('Image pixels differ from the input used to generate these predictions.')
+                    if metadata.get('signal_filter'):
+                        # A filtered result is a new scene. Source/manual annotations
+                        # remain available in the original file, not in this result.
+                        dataset.scene = Scene(source=dataset.scene.source, warnings=dataset.scene.warnings)
                     dataset.scene.surfaces.extend(surfaces)
+                    if signal_archive:
+                        from .signals.overlays import read_signals
+                        points, signal_report = read_signals(signal_archive, metadata['fingerprint'])
+                        if Path(signal_report['cell_predictions']).resolve() == Path(archive).resolve():
+                            dataset.scene.measurements.extend(points)
                 except Exception as exc:
                     dataset.scene.warnings.append(f'Cannot load pipeline contours: {exc}')
             return dataset
@@ -551,7 +576,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def set_dataset(self, dataset, state=None):
         self.dataset = dataset
+        if self.workflow_panel:self.workflow_panel.refresh_scan()
         self.auto_contours_button.setEnabled(True)
+        for measure in dataset.scene.measurements:
+            if measure.source == 'signal_prediction':measure.visible = self.show_predicted_signals.isChecked()
         for surface in dataset.scene.surfaces:
             if not self._source_visibility.get(surface.source, True):
                 surface.visible = False
@@ -731,8 +759,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 text = f'{obj.name}\n{len(obj.vertices):,} vertices · {len(obj.triangles):,} triangles\nTime point {obj.time + 1}'
             elif kind == 'measurement':
                 obj = self.dataset.scene.measurements[index]
-                text = f'{obj.name}\n{len(obj.points)} endpoints · {len(obj.edges)} segments\nTotal distance: {obj.length:.4f} {self.dataset.metadata.unit}'
-                text += '\n' + '\n'.join(f'{obj.labels[i]} → {obj.labels[j]}: {np.linalg.norm(obj.points[j] - obj.points[i]):.4f} {self.dataset.metadata.unit}' for i, j in obj.edges[:6])
+                if obj.source == 'signal_prediction':
+                    text = f'{obj.name}\n' + '\n'.join(obj.labels[:12])
+                else:
+                    text = f'{obj.name}\n{len(obj.points)} endpoints · {len(obj.edges)} segments\nTotal distance: {obj.length:.4f} {self.dataset.metadata.unit}'
+                    text += '\n' + '\n'.join(f'{obj.labels[i]} → {obj.labels[j]}: {np.linalg.norm(obj.points[j] - obj.points[i]):.4f} {self.dataset.metadata.unit}' for i, j in obj.edges[:6])
             else:
                 obj = self.dataset.scene.contours[index]
                 text = f'{obj.name}\n{len(obj.points)} vertices · saved contour curve\nThis outline has no saved mesh.'
@@ -748,6 +779,10 @@ class MainWindow(QtWidgets.QMainWindow):
         points = obj.vertices if kind == 'surface' else obj.vertices(self.dataset.metadata) if kind == 'contour' else obj.points
         lower, upper = points.min(axis=0), points.max(axis=0)
         center = (lower + upper) / 2
+        if kind == 'measurement' and obj.source == 'signal_prediction':
+            # Keep surrounding cell context when focusing a single punctum.
+            lower = np.minimum(lower, center - 1.5)
+            upper = np.maximum(upper, center + 1.5)
         if self.mode_3d.isChecked() and self.volume_view:
             padding = max(float((upper - lower).max()) * 0.2, max(self.dataset.spacing) * 2)
             bounds = tuple(v for low, high in zip(lower, upper) for v in (low - padding, high + padding))
@@ -886,6 +921,8 @@ class MainWindow(QtWidgets.QMainWindow):
             'Original images and annotation files are never modified.')
 
     def show_pipeline(self):
+        if self.workflow_dock:self.workflow_dock.hide()
+        if self.signal_dock:self.signal_dock.hide()
         if self.pipeline_panel is None:
             from .pipeline.gui import PipelinePanel
             self.pipeline_dock = QtWidgets.QDockWidget('Classical contour pipeline', self)
@@ -902,6 +939,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pipeline_dock.raise_()
 
     def show_neural(self):
+        if self.workflow_dock:self.workflow_dock.hide()
+        if self.signal_dock:self.signal_dock.hide()
         if self.neural_panel is None:
             from .neural.gui import NeuralPanel
             self.neural_dock = QtWidgets.QDockWidget('StarDist 3D neural training', self)
@@ -934,6 +973,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.neural_panel.load_report()
 
     def auto_select_contours(self):
+        if self.workflow_panel and self.workflow_panel.busy:
+            self.statusBar().showMessage('Wait for the scan workflow to finish, or cancel it first.')
+            return
         if self.entry is None or self.dataset is None or self._pending_load:
             self.statusBar().showMessage('Open a scan and wait for it to finish loading first.')
             return
@@ -958,11 +1000,83 @@ class MainWindow(QtWidgets.QMainWindow):
             archive = Path(row['predictions'])
             if not archive.is_file():
                 raise FileNotFoundError(f'Prediction archive is missing: {archive}')
-            self._pipeline_archives[(str(image), 0)] = archive
+            key = (str(image), 0)
+            if self._pipeline_archives.get(key) != archive:self._signal_archives.pop(key, None)
+            self._pipeline_archives[key] = archive
             self.add_entries([entry])
             self.load_entry(entry)
         except Exception:
             self.error(traceback.format_exc())
+
+    def show_signals(self):
+        if self.workflow_dock:self.workflow_dock.hide()
+        if self.signal_panel is None:
+            from .signals.gui import SignalPanel
+            self.signal_dock = QtWidgets.QDockWidget('Signal detection and training', self)
+            self.signal_dock.setObjectName('signalDetection')
+            self.signal_panel = SignalPanel(self)
+            self.signal_scroll = self.scroll_panel(self.signal_panel)
+            self.signal_dock.setWidget(self.signal_scroll)
+            self.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self.signal_dock)
+            self.resizeDocks([self.signal_dock], [600], QtCore.Qt.Orientation.Vertical)
+            if self.screen().availableGeometry().height() < 900:
+                self.signal_dock.setFloating(True);self.fit_floating_dock(self.signal_dock)
+        for dock in (self.neural_dock,self.pipeline_dock):
+            if dock:dock.hide()
+        self.signal_dock.show();self.signal_dock.raise_()
+
+    def show_workflow(self):
+        if self.workflow_panel is None:
+            from .workflow.gui import WorkflowPanel
+            self.workflow_dock = QtWidgets.QDockWidget('Scan workflow and Imaris export', self)
+            self.workflow_dock.setObjectName('scanWorkflow')
+            self.workflow_panel = WorkflowPanel(self)
+            self.workflow_scroll = self.scroll_panel(self.workflow_panel)
+            self.workflow_dock.setWidget(self.workflow_scroll)
+            self.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self.workflow_dock)
+            self.resizeDocks([self.workflow_dock], [560], QtCore.Qt.Orientation.Vertical)
+            if self.screen().availableGeometry().height() < 900:
+                self.workflow_dock.setFloating(True)
+                self.fit_floating_dock(self.workflow_dock)
+        for dock in (self.neural_dock, self.signal_dock, self.pipeline_dock):
+            if dock:dock.hide()
+        self.workflow_panel.refresh_scan()
+        self.workflow_dock.show()
+        self.workflow_dock.raise_()
+
+    def open_signal_prediction(self, path):
+        try:
+            from .signals.overlays import read_signals
+            _, report = read_signals(path)
+            image = Path(report['image']).resolve()
+            scene = Path(report['scene']) if report.get('scene') else None
+            entry = LibraryEntry(image, scene) if scene and scene.exists() else entry_for_path(image)
+            key = (str(image), 0)
+            self._pipeline_archives[key] = Path(report['cell_predictions'])
+            self._signal_archives[key] = Path(path)
+            self.show_predicted_signals.setChecked(True)
+            self.show_markers.setChecked(True)
+            self.show_surfaces.setChecked(True)
+            self._source_visibility['prediction'] = True
+            # Object lists change when predictions are replaced/filtered. Do not
+            # apply the old per-index visibility flags to unrelated new objects.
+            state = dict(self.view_state() if entry == self.entry else self._saved_states.get(entry, {}))
+            for name in ('surface_visibility', 'measurement_visibility', 'contour_visibility'):
+                state.pop(name, None)
+            state.update(surfaces=True, markers=True)
+            self.add_entries([entry]);self.load_entry(entry, state_override=state)
+            if self.signal_dock:self.signal_dock.hide()
+        except Exception:self.error(traceback.format_exc())
+
+    def signal_visibility(self,visible):
+        if not self.dataset:return
+        self.objects.blockSignals(True)
+        group = self.objects.topLevelItem(1)
+        for i,measure in enumerate(self.dataset.scene.measurements):
+            if measure.source == 'signal_prediction':
+                measure.visible = visible
+                if group:group.child(i).setCheckState(0, QtCore.Qt.CheckState.Checked if visible else QtCore.Qt.CheckState.Unchecked)
+        self.objects.blockSignals(False);self.refresh_annotations()
 
     def set_surface_source_visible(self, source, visible):
         self._source_visibility[source] = visible
@@ -983,6 +1097,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.pipeline_panel.shutdown()
         if self.neural_panel:
             self.neural_panel.shutdown()
+        if self.signal_panel:
+            self.signal_panel.shutdown()
+        if self.workflow_panel:
+            self.workflow_panel.shutdown()
         self.refresh_timer.stop()
         self.thread_pool.clear()
         self.thread_pool.waitForDone()

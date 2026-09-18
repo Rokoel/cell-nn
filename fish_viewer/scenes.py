@@ -71,7 +71,7 @@ def _surface(name, vertex_text, face_text, color, opacity, time, visible) -> Sur
 
 def parse_scene(data: bytes | str, source: Path | None = None) -> Scene:
     result = Scene(source=source)
-    root = ET.fromstring(data)
+    root = ET.fromstring(data, parser=ET.XMLParser(target=ET.TreeBuilder(insert_comments=True)))
     for viewer in root.iter('bpSurfacesViewer'):
         name, color, visible = appearance(viewer)
         props = viewer.find('bpSurfacesProperties')
@@ -158,6 +158,11 @@ def parse_scene(data: bytes | str, source: Path | None = None) -> Scene:
     for tag in ('bpSpots', 'bpFilaments'):
         if root.find('.//' + tag) is not None:
             result.warnings.append(f'{tag} annotations are not supported by this XML reader.')
+    if any(el.tag is ET.Comment and (el.text or '').startswith('FISH Viewer exported detections;') for el in root):
+        for surface in result.surfaces:
+            surface.source = 'prediction'
+        for measurement in result.measurements:
+            measurement.source = 'signal_prediction'
     return result
 
 
