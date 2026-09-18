@@ -22,9 +22,13 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--pipeline', action='store_true', help='Also run two GUI tuning trials and inspect prediction overlays')
 parser.add_argument('--neural-report', type=Path, help='Open a trained neural run, apply its model through the GUI, and inspect overlays')
 parser.add_argument('--neural-train', action='store_true', help='Also exercise one live training epoch through the neural GUI')
+parser.add_argument('--neural-audit',type=Path,help='Inspect the audited collection controls without starting training')
+parser.add_argument('--auto-contours',action='store_true',help='Exercise the model picker, report button and automatic overlay at a small window size')
 args = parser.parse_args()
 if args.neural_train and not args.neural_report:
     parser.error('--neural-train requires --neural-report')
+if args.auto_contours and not args.neural_report:
+    parser.error('--auto-contours requires --neural-report')
 app = QtWidgets.QApplication([])
 print('Qt platform:', app.platformName(), flush=True)
 app.setStyle('Fusion')
@@ -76,9 +80,23 @@ def exercise_neural(path):
     panel=window.neural_panel
     failures=[];panel.show_error=failures.append
     report=json.loads(path.read_text())
-    panel.display_report(report)
+    if args.auto_contours:
+        window.resize(1024,600)
+        window.neural_dock.setFloating(True);window.neural_dock.resize(900,560)
+        original=QtWidgets.QFileDialog.getOpenFileName
+        QtWidgets.QFileDialog.getOpenFileName=lambda *args:(str(path),'')
+        try:window.neural_report_button.click()
+        finally:QtWidgets.QFileDialog.getOpenFileName=original
+        for _ in range(4):app.processEvents()
+        assert window.viewer_scroll.verticalScrollBar().maximum()>0
+        assert window.neural_scroll.verticalScrollBar().maximum()>0
+        panel.tabs.setCurrentIndex(3)
+        window.neural_scroll.ensureWidgetVisible(panel.results_open_report)
+        app.processEvents();window.neural_dock.grab().save(str(output/'neural-small-results.png'))
+    else:panel.display_report(report)
     if args.neural_train:
         panel.mode.setCurrentIndex(0)
+        panel.set_audit(None)
         panel.set_entries(scan_library('FISH/3abx3ad_101212')[0])
         panel.set_config(replace(panel.config(),epochs=1,steps_per_epoch=1,calibrate_probability=False))
         panel.output.setText(str(output/'neural-gui-training-smoke'))
@@ -91,6 +109,8 @@ def exercise_neural(path):
                 assert panel.job is not None
             if event['kind']=='epoch':
                 panel.grab().save(str(output/'neural-live-training.png'))
+            if event['kind']=='progress':
+                assert panel.phase_label.text().startswith(event['phase'])
         panel.handle_event=record_event
         panel.start()
         deadline=time.monotonic()+180
@@ -107,18 +127,40 @@ def exercise_neural(path):
     for tab,name in [(0,'setup'),(1,'scores'),(3,'results')]:
         panel.tabs.setCurrentIndex(tab);app.processEvents()
         panel.grab().save(str(output/f'neural-{name}.png'))
-    panel.current_image()
     panel.output.setText(str(output/'neural-gui-smoke'))
-    panel.start()
+    if args.auto_contours:
+        from fish_viewer.neural.model_picker import ModelPicker
+        chosen=[]
+        timer=QtCore.QTimer();timer.setInterval(30)
+        def choose():
+            dialog=app.activeModalWidget()
+            if isinstance(dialog,ModelPicker):
+                index=dialog.models.findData(report['model_directory'])
+                assert index>=0
+                dialog.models.setCurrentIndex(index)
+                dialog.grab().save(str(output/'neural-model-picker.png'))
+                chosen.append(dialog.models.currentData());timer.stop();dialog.accept()
+        timer.timeout.connect(choose);timer.start()
+        window.neural_dock.hide();window.auto_contours_button.click()
+        timer.stop()
+        assert chosen==[report['model_directory']]
+        assert not panel.config().use_shape_filter and panel.config().precision_mode
+    else:
+        panel.current_image();panel.start()
     deadline=time.monotonic()+120
     while panel.job is not None and time.monotonic()<deadline:
         app.processEvents();time.sleep(.01)
     assert not failures,failures
     assert panel.job is None and panel.report['status']=='complete',panel.report
     assert panel.results.rowCount()==1
+    if args.auto_contours:
+        assert not panel.report['config']['use_shape_filter']
+        assert panel.report['config']['precision_mode']
+        assert not window.neural_dock.isVisible()
     panel.tabs.setCurrentIndex(2);app.processEvents()
     panel.grab().save(str(output/'neural-preprocessing.png'))
-    panel.results.selectRow(0);panel.open_overlay()
+    if not args.auto_contours:
+        panel.results.selectRow(0);panel.open_overlay()
     deadline=time.monotonic()+30
     while window._pending_load and time.monotonic()<deadline:
         app.processEvents();time.sleep(.01)
@@ -126,6 +168,10 @@ def exercise_neural(path):
     assert any(s.source=='prediction' for s in window.dataset.scene.surfaces)
     window.neural_dock.hide();app.processEvents();window.fit_view()
     window.slice_view.viewport().grab().save(str(output/'neural-overlay-2d.png'))
+    if args.auto_contours:
+        window.viewer_scroll.verticalScrollBar().setValue(0);app.processEvents()
+        window.grab().save(str(output/'neural-auto-small-viewer.png'))
+        print('PASS: small-window scrolling, visible report buttons, model picker, evidence-only application and automatic overlay.',flush=True)
     print('PASS: neural report/graphs, saved checkpoint application in a subprocess, and 2D prediction overlays.',flush=True)
 
 
@@ -147,6 +193,17 @@ def exercise():
         window.orientation.setCurrentIndex(0)
         if args.pipeline:
             exercise_pipeline()
+        if args.neural_audit:
+            window.show_neural();panel=window.neural_panel
+            panel.set_audit(args.neural_audit,restore_config=True)
+            assert not panel.files.isEnabled() and panel.files.count()==len(panel._collection_audit['cases'])
+            panel.tabs.setCurrentIndex(0);app.processEvents()
+            panel.grab().save(str(output/'neural-audit-setup.png'))
+            panel.handle_event(dict(kind='progress',phase='Training',current=85,total=200,epoch=23,epochs=120))
+            panel.tabs.setCurrentIndex(1);app.processEvents()
+            panel.grab().save(str(output/'neural-progress-layout.png'))
+            window.neural_dock.hide()
+            print('PASS: audited collection, fixed acquisition split controls, and restored collection settings.',flush=True)
         if args.neural_report:
             exercise_neural(args.neural_report)
         window.switch_mode(True)

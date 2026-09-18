@@ -121,12 +121,15 @@ def test_neural_gui_controls_and_failed_process(qapp,ims_file,tmp_path):
 
 
 @pytest.mark.neural
-def test_real_stardist_training_checkpoint_and_prediction(tmp_path,monkeypatch):
+@pytest.mark.parametrize('streaming',[False,True])
+def test_real_stardist_training_checkpoint_and_prediction(tmp_path,monkeypatch,streaming):
     if not importlib.util.find_spec('stardist'):pytest.skip('Optional StarDist dependencies not installed')
     from fish_viewer.neural import engine
     cases=[make_case(tmp_path,g) for g in ('101212','131212','141212')]
     monkeypatch.setattr(engine,'load_cases',lambda *args,**kwargs:cases)
-    config=NeuralConfig(epochs=1,steps_per_epoch=1,patch_z=32,patch_xy=32,rays=16,filters=8,device='cpu',calibrate_probability=False)
+    config=NeuralConfig(epochs=1,steps_per_epoch=1,patch_z=32,patch_xy=32,rays=16,filters=8,device='cpu',calibrate_probability=False,
+        streaming_validation=streaming,overlap_policy='isolate' if streaming else 'discard',
+        synthetic_background_fraction=1 if streaming else 0)
     events=[]
     report=engine.run_neural([c.entry for c in cases],config,tmp_path/'runs',emit=events.append)
     assert report['status']=='complete',report.get('traceback')
@@ -139,6 +142,8 @@ def test_real_stardist_training_checkpoint_and_prediction(tmp_path,monkeypatch):
     epoch_event=next(i for i,e in enumerate(events) if e['kind']=='epoch')
     test_event=next(i for i,e in enumerate(events) if e['kind']=='result' and e['row']['split']=='test')
     assert test_event>epoch_event
+    phases={e['phase'] for e in events if e['kind']=='progress'}
+    assert {'Training','Validation loss','Final prediction and evaluation','Complete'}<=phases
     from stardist.models import StarDist3D
     loaded=StarDist3D(None,name=model.name,basedir=str(model.parent))
     loaded.load_weights('best.weights.h5')

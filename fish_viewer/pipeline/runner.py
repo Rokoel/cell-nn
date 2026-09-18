@@ -99,6 +99,7 @@ def save_prediction(path, prediction, prepared, entry, config, metrics):
     np.savez_compressed(path, labels=prediction.labels, metadata=np.array(json.dumps(metadata, allow_nan=False)))
     with Path(path).with_suffix('.cells.csv').open('w', newline='', encoding='utf-8') as stream:
         fields = ['label', 'volume_um3', 'diameter_um', 'sphericity', 'elongation', 'center_xyz']
+        fields += sorted({key for cell in prediction.cells for key in cell}-set(fields))
         writer = csv.DictWriter(stream, fieldnames=fields)
         writer.writeheader()
         writer.writerows(prediction.cells)

@@ -3,6 +3,7 @@ from dataclasses import asdict, replace
 from datetime import datetime
 import csv
 import importlib.metadata
+from itertools import product
 import json
 import os
 from pathlib import Path
@@ -17,7 +18,8 @@ from ..pipeline.evaluation import aggregate, evaluate
 from ..pipeline.runner import _json, save_prediction
 from ..pipeline.segmentation import Cancelled, Prediction, checkpoint, mask_properties
 from .config import NeuralConfig
-from .data import load_cases, three_way_split, training_arrays, subset_metrics
+from .data import load_cases, three_way_split, training_arrays, subset_metrics, add_synthetic_background
+from .precision import membrane_evidence,evidence_passes
 
 
 def runtime(device='auto', seed=42):
@@ -45,7 +47,7 @@ def runtime(device='auto', seed=42):
 
 def filter_instances(labels, prepared, config):
     result = np.zeros(labels.shape, np.uint32)
-    rejected = dict(size=0, border=0, elongation=0, sphericity=0)
+    rejected = dict(size=0, border=0, elongation=0, sphericity=0, membrane_evidence=0)
     cells = []
     for i, box in enumerate(ndi.find_objects(labels), 1):
         if box is None:
@@ -53,7 +55,8 @@ def filter_instances(labels, prepared, config):
         mask = labels[box] == i
         volume = int(mask.sum())*float(np.prod(prepared.spacing))
         diameter = (6*volume/np.pi)**(1/3)
-        if not config.min_diameter_um <= diameter <= config.max_diameter_um:
+        upper=min(config.max_diameter_um,config.precision_max_diameter_um) if config.precision_mode else config.max_diameter_um
+        if not config.min_diameter_um <= diameter <= upper:
             rejected['size'] += 1
             continue
         cut = any(s.start==0 or s.stop==n for s,n in zip(box, labels.shape))
@@ -61,12 +64,18 @@ def filter_instances(labels, prepared, config):
             rejected['border'] += 1
             continue
         props = mask_properties(mask, np.asarray(prepared.spacing))
-        if props['elongation'] > config.max_elongation:
+        if config.use_shape_filter and props['elongation'] > config.max_elongation:
             rejected['elongation'] += 1
             continue
-        if props['sphericity'] < config.min_sphericity:
+        if config.use_shape_filter and props['sphericity'] < config.min_sphericity:
             rejected['sphericity'] += 1
             continue
+        if config.precision_mode:
+            evidence=membrane_evidence(mask,box,prepared,config)
+            if not evidence_passes(evidence,config):
+                rejected['membrane_evidence']+=1
+                continue
+            props.update(evidence)
         number = len(cells)+1
         result[box][mask] = number
         center = (np.argwhere(mask).mean(0)+[s.start for s in box])*prepared.spacing
@@ -75,27 +84,48 @@ def filter_instances(labels, prepared, config):
     return Prediction(result, cells, {}, {}, rejected)
 
 
-def predict(model, case, config, cancel=None):
+def proposals(model,case,config,cancel=None,emit=None):
+    """Keep sparse centers/rays; never assemble a whole-field dense ray tensor."""
+    shape=np.asarray(case.prepared.image.shape)
+    grid=np.asarray(model.config.grid)
+    # A 32-voxel halo supplies context; disjoint cores own each proposal once.
+    core=np.array((64,128,128));halo=np.array((32,32,32))
+    chunks=[];block_capped=False
+    blocks=list(product(*(range(0,int(n),int(c)) for n,c in zip(shape,core))))
+    for block_number,start in enumerate(blocks,1):
+        checkpoint(cancel)
+        if emit:emit(dict(kind='tile',current=block_number,total=len(blocks),file=str(case.entry.image)))
+        start=np.asarray(start);stop=np.minimum(shape,start+core)
+        low=np.maximum(0,start-halo);high=np.minimum(shape,stop+halo)
+        block=tuple(slice(int(a),int(b)) for a,b in zip(low,high))
+        probability,distances=model.predict(np.asarray(case.prepared.image[block]),axes='ZYX',
+            n_tiles=(1,1,1),show_tile_progress=False,verbose=0)
+        if not np.isfinite(probability).all() or not np.isfinite(distances).all():
+            raise ValueError('Network produced non-finite predictions.')
+        peaks=peak_local_max(probability,min_distance=2,threshold_abs=config.probability_threshold,
+            exclude_border=False,num_peaks=4000)
+        block_capped=block_capped or len(peaks)==4000
+        if not len(peaks):continue
+        points=peaks*grid+low
+        radial=distances[tuple(peaks.T)]
+        valid=np.all((points>=start)&(points<stop),axis=1)&(radial.min(1)>=.25)&(radial.max(1)<=2*config.max_diameter_um/min(case.prepared.spacing))
+        chunks.append((points[valid],probability[tuple(peaks[valid].T)],radial[valid]))
+    if not chunks:return np.empty((0,3),int),np.empty(0),np.empty((0,config.rays)),False
+    points,probability,distances=[np.concatenate([chunk[i] for chunk in chunks]) for i in range(3)]
+    capped=block_capped or len(points)>=4000
+    if len(points)>4000:
+        order=np.argsort(-probability,kind='stable')[:4000]
+        points,probability,distances=points[order],probability[order],distances[order]
+    return points,probability,distances,capped
+
+
+def predict(model, case, config, cancel=None,emit=None):
     checkpoint(cancel)
     started = time.monotonic()
-    # Tile laterally to bound GPU feature-map memory. No inference augmentation.
-    probability, distances = model.predict(np.asarray(case.prepared.image), axes='ZYX',
-        n_tiles=(1,2,2), show_tile_progress=False, verbose=0)
-    if not np.isfinite(probability).all() or not np.isfinite(distances).all():
-        raise ValueError('Network produced non-finite predictions.')
-    # Untrained / sparsely supervised models can assign medium confidence to
-    # huge plateaus. Local peak proposals avoid sending hundreds of thousands
-    # of nearly identical, degenerate polyhedra to the geometric NMS solver.
-    peaks=peak_local_max(probability,min_distance=2,threshold_abs=config.probability_threshold,
-        exclude_border=False,num_peaks=4000)
-    capped=len(peaks)==4000
-    if len(peaks):
-        radial=distances[tuple(peaks.T)]
-        valid=(radial.min(1)>=.25)&(radial.max(1)<=2*config.max_diameter_um/min(case.prepared.spacing))
-        peaks,radial=peaks[valid],radial[valid]
+    peaks,probability,radial,capped=proposals(model,case,config,cancel,emit)
     if len(peaks):
         raw,_=model._instances_from_prediction(case.prepared.image.shape,
-            probability[tuple(peaks.T)],radial,points=peaks*np.asarray(model.config.grid),
+            probability,radial,points=peaks,
             nms_thresh=config.nms_threshold)
     else:
         raw=np.zeros(case.prepared.image.shape,np.uint32)
@@ -127,7 +157,7 @@ def aggregate_subsets(rows):
     return result
 
 
-def run_neural(entries, config, output_root, mode='train', model_directory=None, emit=None, cancel=None):
+def run_neural(entries, config, output_root, mode='train', model_directory=None, emit=None, cancel=None, audit_path=None):
     config.validate()
     if not entries or mode not in ('train','apply'):
         raise ValueError('Choose input files and train or apply mode.')
@@ -141,12 +171,25 @@ def run_neural(entries, config, output_root, mode='train', model_directory=None,
         metric_notes='Incomplete references: unknown predictions unscored. Complete and cut cells reported separately. '
         'Validation loss selects the checkpoint; test predictions run only after selection. '
         'This reference test acquisition was inspected in earlier classical experiments; results are exploratory.')
+    last_progress_write=0.
     def notify(event):
+        nonlocal last_progress_write
         checkpoint(cancel)
+        if event.get('kind')=='progress':
+            previous=report.get('progress',{})
+            report['progress']={k:v for k,v in event.items() if k!='kind'}
+            if time.monotonic()-last_progress_write>=1 or previous.get('phase')!=event['phase']:
+                persist();last_progress_write=time.monotonic()
         if event.get('kind') == 'warning':
             report['warnings'].append(event['message'])
         if emit:
             emit(event)
+        if event.get('kind')=='file' and (event['phase'].startswith('Preparing') or event['phase']=='Preprocessing'):
+            progress('Preprocessing',event['current']-1,event['total'],file=event['file'])
+        if event.get('kind')=='tile':
+            report.setdefault('progress',{}).update(tile=event['current'],tiles=event['total'])
+    def progress(phase,current,total,**extra):
+        notify(dict(kind='progress',phase=phase,current=current,total=total,**extra))
     def persist():
         report['elapsed_s'] = time.monotonic()-started
         _json(directory/'report.json', report)
@@ -163,14 +206,31 @@ def run_neural(entries, config, output_root, mode='train', model_directory=None,
             if manifest.get('version') != 1 or manifest.get('engine') != 'stardist3d':
                 raise ValueError('Unsupported neural model manifest.')
             # Use exactly the preprocessing and geometry policy saved with training.
-            config = replace(NeuralConfig.from_dict(manifest['config']), device=config.device)
+            requested=config
+            config = replace(NeuralConfig.from_dict(manifest['config']), device=requested.device)
+            if requested.precision_mode:
+                fields=('precision_mode','precision_max_diameter_um','membrane_support','membrane_contrast','membrane_intensity',
+                    'probability_threshold','nms_threshold','min_sphericity','max_elongation','exclude_border','use_shape_filter')
+                config=replace(config,**{key:getattr(requested,key) for key in fields},calibrate_probability=False)
             report['config'] = asdict(config)
-        cases = load_cases(entries, config, directory, notify, cancel)
+        if audit_path:
+            from .audit import load_audit
+            cases=load_audit(audit_path,config,directory,notify,cancel)
+            report['audit_path']=str(Path(audit_path).resolve())
+        else:
+            cases = load_cases(entries, config, directory, notify, cancel)
         if not cases:
             raise ValueError('No usable image datasets were found.')
         report['data_audit'] = [c.audit for c in cases]
         if mode == 'train':
-            training, validation, testing = three_way_split(cases)
+            if audit_path:
+                training,validation,testing=([c for c in cases if c.audit['split']==split] for split in ('training','validation','test'))
+            else:
+                training, validation, testing = three_way_split(cases)
+            validation_preview=[c for c in validation if c.references]
+            if config.validation_images and len(validation_preview)>config.validation_images:
+                validation_preview=[validation_preview[i] for i in np.linspace(0,len(validation_preview)-1,config.validation_images,dtype=int)]
+            report['validation_preview_images']=[str(c.entry.image) for c in validation_preview]
             report['split'] = {k:[str(c.entry.image) for c in v] for k,v in
                 [('training',training),('validation',validation),('test',testing)]}
             notify(dict(kind='neural_split', split=report['split']))
@@ -180,6 +240,7 @@ def run_neural(entries, config, output_root, mode='train', model_directory=None,
             if sum(c.audit['training_objects'] for c in training) < 50:
                 notify(dict(kind='warning', message='Fewer than 50 complete training cells: this is a small exploratory pilot.'))
         notify(dict(kind='stage', stage='Initializing StarDist / TensorFlow', progress=0))
+        progress('Initializing neural network',0,1)
         tf, StarDist3D, Config3D, device_info = runtime(config.device, config.seed)
         report['runtime'] = device_info
         notify(dict(kind='runtime', **device_info))
@@ -208,6 +269,20 @@ def run_neural(entries, config, output_root, mode='train', model_directory=None,
             stale = 0
             outer_model = model
             class Progress(tf.keras.callbacks.Callback):
+                def on_epoch_begin(self,epoch,logs=None):
+                    self.epoch=epoch+1
+                    progress('Training',0,config.steps_per_epoch,epoch=self.epoch,epochs=config.epochs)
+
+                def on_test_begin(self,logs=None):
+                    self.validation_total=int(np.ceil((len(xv) if config.streaming_validation else 8)/config.batch_size))
+                    progress('Validation loss',0,self.validation_total,epoch=self.epoch,epochs=config.epochs)
+
+                def on_test_batch_end(self,batch,logs=None):
+                    checkpoint(cancel)
+                    if (batch+1)%5==0 or batch+1==self.validation_total:
+                        notify(dict(kind='validation_batch',batch=batch+1,total=self.validation_total,epoch=self.epoch,epochs=config.epochs))
+                        progress('Validation loss',batch+1,self.validation_total,epoch=self.epoch,epochs=config.epochs)
+
                 def on_train_batch_end(self, batch, logs=None):
                     checkpoint(cancel)
                     if not np.isfinite(float(logs.get('loss',0))):
@@ -215,11 +290,13 @@ def run_neural(entries, config, output_root, mode='train', model_directory=None,
                     if (batch+1) % 5 == 0 or batch+1 == config.steps_per_epoch:
                         notify(dict(kind='batch', batch=batch+1, total=config.steps_per_epoch,
                             loss=float(logs.get('loss',0))))
+                        progress('Training',batch+1,config.steps_per_epoch,epoch=self.epoch,epochs=config.epochs,loss=float(logs.get('loss',0)))
 
                 def on_epoch_end(self, epoch, logs=None):
                     nonlocal best_loss, stale
                     checkpoint(cancel)
                     logs = {k:float(v) for k,v in (logs or {}).items()}
+                    logs['learning_rate']=float(tf.keras.backend.get_value(outer_model.keras_model.optimizer.learning_rate))
                     if not all(np.isfinite(v) for v in logs.values()):
                         raise ValueError('Training produced a non-finite loss; inspect the supervision and reduce the learning rate.')
                     current = logs['val_loss']
@@ -233,23 +310,61 @@ def run_neural(entries, config, output_root, mode='train', model_directory=None,
                     row = dict(epoch=epoch+1, losses=logs, best_val_loss=best_loss,
                         elapsed_s=time.monotonic()-started)
                     if (epoch+1) % config.validate_every == 0 or epoch == 0:
-                        scores = [predict(outer_model, c, config, cancel)[1] for c in validation]
+                        scores=[]
+                        for number,c in enumerate(validation_preview,1):
+                            progress('Validation contours',number-1,len(validation_preview),epoch=epoch+1,epochs=config.epochs,file=str(c.entry.image))
+                            scores.append(predict(outer_model,c,config,cancel,notify)[1])
                         row['validation'] = aggregate_subsets(scores)
                     report['epochs'].append(row)
                     persist()
                     notify(dict(kind='epoch', **row))
                     if stale >= config.patience:
                         outer_model.keras_model.stop_training = True
+                        report['stop_reason']='Validation loss did not improve within patience.'
             # Own checkpoints have a stable name across supported Keras versions.
             model.callbacks = [Progress(), tf.keras.callbacks.ReduceLROnPlateau(
                 monitor='val_loss', patience=max(2,config.patience//2), factor=0.5, min_lr=1e-6)]
             x, y = training_arrays(training, config)
             xv, yv = training_arrays(validation, config)
+            if not len(x) or not len(xv):
+                raise ValueError('Training and validation each need at least one complete cell within the selected shape limits.')
+            x,y,synthetic_count=add_synthetic_background(x,y,config)
+            report['patch_counts']=dict(training=len(x),validation=len(xv))
+            report['patch_counts']['synthetic_background']=synthetic_count
+            if synthetic_count:
+                notify(dict(kind='warning',message=f'{synthetic_count} synthetic blank/noise crops supplement manual targets. '
+                    'These test empty-image behavior; they are not reviewed real false-positive examples.'))
             persist()
-            model.train(x, y, validation_data=(xv,yv), epochs=config.epochs,
-                steps_per_epoch=config.steps_per_epoch, augmenter=augment, seed=config.seed, workers=1)
+            if config.streaming_validation:
+                from stardist.models.model3d import StarDistData3D
+                from stardist.rays3d import rays_from_json
+                kwargs=dict(rays=rays_from_json(model.config.rays_json),grid=model.config.grid,
+                    patch_size=model.config.train_patch_size,anisotropy=model.config.anisotropy,
+                    use_gpu=False,foreground_prob=1,sample_ind_cache=False,
+                    keras_kwargs=dict(workers=1,use_multiprocessing=False,max_queue_size=2))
+                train_data=StarDistData3D(x,y,batch_size=config.batch_size,length=config.epochs*config.steps_per_epoch,
+                    augmenter=augment,**kwargs)
+                class OrderedValidation(StarDistData3D):
+                    def batch(self,i):return np.arange(i*self.batch_size,min((i+1)*self.batch_size,self.data_size))
+                val_data=OrderedValidation(xv,yv,batch_size=config.batch_size,
+                    length=int(np.ceil(len(xv)/config.batch_size)),**kwargs)
+                model.keras_model.fit(iter(train_data),validation_data=val_data,epochs=config.epochs,
+                    steps_per_epoch=config.steps_per_epoch,callbacks=model.callbacks,verbose=0,shuffle=False)
+            else:
+                model.train(x, y, validation_data=(xv,yv), epochs=config.epochs,
+                    steps_per_epoch=config.steps_per_epoch, augmenter=augment, seed=config.seed, workers=1)
             checkpoint(cancel)
             model.load_weights('best.weights.h5')
+            report.setdefault('stop_reason','Maximum epochs reached.')
+            if config.select_balanced_acceptance:
+                from .selection import select_acceptance
+                config,selection=select_acceptance(model,validation,config,notify,cancel)
+                report['acceptance_selection']=selection
+                report['config']=asdict(config)
+                model_manifest.update(config=asdict(config),acceptance_selection=selection)
+                _json(model_directory/'fish-model.json',model_manifest)
+                _json(directory/'acceptance-selection.json',selection)
+                persist()
             if config.calibrate_probability:
                 # Standard dense-label threshold optimization would count all
                 # unknown cells as false positives. Use our partial-reference
@@ -261,7 +376,11 @@ def run_neural(entries, config, output_root, mode='train', model_directory=None,
                 for index,threshold in enumerate(thresholds,1):
                     candidate=replace(config,probability_threshold=threshold)
                     notify(dict(kind='stage',stage=f'Validation probability threshold {threshold:.2f}',progress=100*index/len(thresholds)))
-                    scores=aggregate_subsets([predict(model,c,candidate,cancel)[1] for c in validation])
+                    values=[]
+                    for number,c in enumerate(validation,1):
+                        progress('Threshold calibration',number-1,len(validation),threshold=threshold,file=str(c.entry.image))
+                        values.append(predict(model,c,candidate,cancel,notify)[1])
+                    scores=aggregate_subsets(values)
                     value=scores['complete_cells']['mean_dice']
                     row=dict(probability_threshold=threshold,validation=scores)
                     report['calibration'].append(row)
@@ -282,12 +401,13 @@ def run_neural(entries, config, output_root, mode='train', model_directory=None,
             model.load_weights(manifest['checkpoint'])
             report['model_directory'] = str(model_directory)
             training, validation, testing = [], [], []
-        test_scores = []
+        test_scores = [];validation_scores=[]
         for index, case in enumerate(cases, 1):
             split = 'test' if case in testing else 'validation' if case in validation else 'training' if case in training else 'apply' if mode=='apply' else 'unscored'
             notify(dict(kind='file', file=str(case.entry.image), phase=f'Final {split}', current=index, total=len(cases),
                 previews=case.prepared.previews, channel_scores=case.prepared.channel_scores))
-            prediction, metrics = predict(model, case, config, cancel)
+            progress('Final prediction and evaluation',index-1,len(cases),split=split,file=str(case.entry.image))
+            prediction, metrics = predict(model, case, config, cancel,notify)
             if metrics['proposal_limit_reached']:
                 notify(dict(kind='warning', message=f'{case.entry.image.name}: reached the 4,000-proposal limit; '
                     'some candidate cells may be omitted. Review this field before using its contours.'))
@@ -301,12 +421,15 @@ def run_neural(entries, config, output_root, mode='train', model_directory=None,
             notify(dict(kind='result', row=row))
             if split == 'test':
                 test_scores.append(metrics)
+            if split == 'validation':validation_scores.append(metrics)
             notify(dict(kind='stage', stage='Neural contours ready', progress=100,
                 previews={'Accepted spherical cells':prediction.labels[len(prediction.labels)//2]}, timings=prediction.timings))
+        if validation_scores:report['selected_validation']=aggregate_subsets(validation_scores)
         if test_scores:
             report['evaluation'] = aggregate_subsets(test_scores)
             notify(dict(kind='evaluation', scores=report['evaluation']))
         report['status'] = 'complete'
+        progress('Complete',len(cases),len(cases),completed_epochs=len(report['epochs']),best_epoch=report.get('best_epoch'))
         _json(directory/'settings.json', dict(version=1, engine='stardist3d', config=asdict(config)))
     except Cancelled:
         report['status'] = 'cancelled'
@@ -346,10 +469,11 @@ def write_outputs(directory, report):
     for ax,key,title in zip(axes[1:], ['mean_dice','detection_rate','boundary_rmse_um'],
             ['Validation Dice: complete cells','Validation detection: complete cells','Boundary RMSE (µm), matched complete cells']):
         scored=[r for r in rows if 'validation' in r]
-        ax.plot([r['epoch'] for r in scored],[r['validation']['complete_cells'].get(key) for r in scored],'o-',label='Validation')
-        selected=report.get('calibrated_validation',{}).get('complete_cells',{}).get(key)
+        ax.plot([r['epoch'] for r in scored],[r['validation']['complete_cells'].get(key) for r in scored],'o-',
+            label='Validation preview' if report['config'].get('validation_images',0) else 'Validation')
+        selected=(report.get('calibrated_validation') or report.get('selected_validation',{})).get('complete_cells',{}).get(key)
         if selected is not None:
-            ax.scatter([report['best_epoch']],[selected],marker='D',s=45,label='Selected model / threshold')
+            ax.scatter([report['best_epoch']],[selected],marker='D',s=45,label='Selected: full validation')
         final=report.get('evaluation',{}).get('complete_cells',{}).get(key)
         if final is not None:
             ax.scatter([max([r['epoch'] for r in rows],default=0)+1],[final],marker='*',s=100,label='Test: final only')

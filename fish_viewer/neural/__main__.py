@@ -45,7 +45,21 @@ def main():
     parser.add_argument('--device',choices=['auto','cpu','gpu'])
     parser.add_argument('--cancel-file',type=Path)
     parser.add_argument('--check-device',action='store_true',help='Check TensorFlow convolution and gradient computation')
+    parser.add_argument('--check-controls',action='store_true',help='Check a saved model on synthetic images containing no complete cells')
+    parser.add_argument('--audit-only',action='store_true',help='Audit the entire input folder and cache calibrated training data')
+    parser.add_argument('--audit',type=Path,help='Train from a completed collection audit.json and its fixed acquisition split')
+    presets=parser.add_mutually_exclusive_group()
+    presets.add_argument('--precision',action='store_true',help='Use conservative shape, probability and membrane-evidence acceptance')
+    presets.add_argument('--balanced',action='store_true',help='Allow more elongation while retaining membrane evidence; select acceptance on validation during training')
+    presets.add_argument('--evidence-only',action='store_true',help='Ignore roundness and elongation, retain visible-boundary acceptance, and train on all complete annotations')
+    parser.add_argument('--curate-audit',type=Path,help='Derive a conservative audit with the four legacy outliers and all their duplicates excluded')
     args=parser.parse_args()
+    if args.check_controls:
+        if not args.model:parser.error('--check-controls requires --model')
+        from .controls import check_controls
+        output=Path(args.output);output.mkdir(parents=True,exist_ok=True)
+        report=check_controls(args.model,output/'synthetic-controls.json',args.device or 'auto',args.evidence_only)
+        print(json.dumps(report,indent=2));return 0 if report['passed'] else 1
     if args.check_device:
         from .engine import runtime
         tf, _, _, info = runtime(args.device or 'auto')
@@ -66,6 +80,7 @@ def main():
         entries=[LibraryEntry(Path(e['image']),Path(e['scene']) if e.get('scene') else None) for e in request['entries']]
         args.output=request['output'];args.mode=request['mode'];args.model=request.get('model')
         args.cancel_file=request.get('cancel_file')
+        args.audit=request.get('audit')
     else:
         if args.settings:
             settings=json.loads(args.settings.read_text())
@@ -75,11 +90,39 @@ def main():
         config=replace(config,**updates).validate()
         for path in args.paths:
             entries.extend(scan_library(path)[0] if Path(path).is_dir() else [entry_for_path(path)])
+    if args.curate_audit:
+        from .audit import derive_precision_audit
+        from .precision import precision_preset,balanced_preset,evidence_preset
+        if not args.settings:
+            config=NeuralConfig.from_dict(json.loads(args.curate_audit.read_text())['config'])
+        if args.evidence_only:config=evidence_preset(config).validate()
+        elif args.balanced:config=balanced_preset(config).validate()
+        elif args.precision or not args.settings:config=precision_preset(config).validate()
+        report=derive_precision_audit(args.curate_audit,Path(args.output)/'audit.json',config)
+        (Path(args.output)/'settings.json').write_text(json.dumps(dict(version=1,engine='stardist3d',config=asdict(config)),indent=2))
+        print(json.dumps(report['summary'],indent=2));return 0
+    if args.precision:
+        from .precision import precision_preset
+        config=precision_preset(config).validate()
+    if args.balanced:
+        from .precision import balanced_preset
+        config=balanced_preset(config).validate()
+    if args.evidence_only:
+        from .precision import evidence_preset
+        if args.mode=='apply' and args.model and not args.settings and not args.request:
+            manifest=json.loads((Path(args.model)/'fish-model.json').read_text())
+            config=replace(NeuralConfig.from_dict(manifest['config']),device=args.device or 'auto')
+        config=evidence_preset(config).validate()
     if not entries:parser.error('Select Imaris files or a folder.')
     os.environ.setdefault('OMP_NUM_THREADS','4')
     os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL','2')
     cancel=Cancellation(args.cancel_file)
     signal.signal(signal.SIGINT,lambda *_:cancel.event.set())
+    if args.audit_only:
+        if len(args.paths)!=1 or not Path(args.paths[0]).is_dir():parser.error('Audit requires one input folder.')
+        from .audit import audit_collection
+        report=audit_collection(args.paths[0],config,args.output,emit=lambda message:print(message,flush=True),cancel=cancel)
+        return 0 if report['status']=='complete' else 1
     # Library progress goes to stderr; stdout is exclusively JSON events.
     output=sys.stdout
     sys.stdout=sys.stderr
@@ -90,7 +133,7 @@ def main():
     def emit(event):
         print(json.dumps(event,default=serialize,allow_nan=False),file=output,flush=True)
     from .engine import run_neural
-    report=run_neural(entries,config,args.output,args.mode,args.model,emit,cancel)
+    report=run_neural(entries,config,args.output,args.mode,args.model,emit,cancel,audit_path=args.audit)
     return 0 if report['status']=='complete' else 2 if report['status']=='cancelled' else 1
 
 

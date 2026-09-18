@@ -205,7 +205,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.off_screen = off_screen
         self.setWindowTitle('FISH Viewer')
         self.resize(1450, 920)
-        self.setMinimumSize(1024, 680)
+        self.setMinimumSize(760, 420)
         self.setStyleSheet(STYLE)
         self.dataset: Dataset | None = None
         self.entry: LibraryEntry | None = None
@@ -270,7 +270,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _build_body(self):
         splitter = QtWidgets.QSplitter()
-        self.setCentralWidget(splitter)
+        splitter.setMinimumHeight(640)
+        self.viewer_scroll = QtWidgets.QScrollArea()
+        self.viewer_scroll.setWidgetResizable(True)
+        self.viewer_scroll.setWidget(splitter)
+        self.setCentralWidget(self.viewer_scroll)
         library = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(library)
         title = label('DATASETS', muted=True)
@@ -297,6 +301,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.description.setWordWrap(True)
         center_layout.addWidget(self.heading)
         center_layout.addWidget(self.description)
+        actions = QtWidgets.QHBoxLayout()
+        self.auto_contours_button = QtWidgets.QPushButton('Auto-select contours…')
+        self.auto_contours_button.setEnabled(False)
+        self.auto_contours_button.clicked.connect(self.auto_select_contours)
+        self.neural_report_button = QtWidgets.QPushButton('Open saved run…')
+        self.neural_report_button.clicked.connect(self.open_neural_report)
+        actions.addWidget(self.auto_contours_button)
+        actions.addWidget(self.neural_report_button)
+        actions.addStretch()
+        center_layout.addLayout(actions)
         self.warning = label('')
         self.warning.setWordWrap(True)
         self.warning.setStyleSheet('color: #edbd7c; padding: 6px; background: #30291f;')
@@ -537,6 +551,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def set_dataset(self, dataset, state=None):
         self.dataset = dataset
+        self.auto_contours_button.setEnabled(True)
         for surface in dataset.scene.surfaces:
             if not self._source_visibility.get(surface.source, True):
                 surface.visible = False
@@ -876,13 +891,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.pipeline_dock = QtWidgets.QDockWidget('Classical contour pipeline', self)
             self.pipeline_dock.setObjectName('contourPipeline')
             self.pipeline_panel = PipelinePanel(self)
-            self.pipeline_dock.setWidget(self.pipeline_panel)
+            self.pipeline_scroll = self.scroll_panel(self.pipeline_panel)
+            self.pipeline_dock.setWidget(self.pipeline_scroll)
             self.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self.pipeline_dock)
-            self.pipeline_dock.setMinimumHeight(380)
             self.resizeDocks([self.pipeline_dock], [560], QtCore.Qt.Orientation.Vertical)
             if self.screen().availableGeometry().height() < 900:
                 self.pipeline_dock.setFloating(True)
-                self.pipeline_dock.resize(min(1200, self.screen().availableGeometry().width()), 650)
+                self.fit_floating_dock(self.pipeline_dock)
         self.pipeline_dock.show()
         self.pipeline_dock.raise_()
 
@@ -892,16 +907,48 @@ class MainWindow(QtWidgets.QMainWindow):
             self.neural_dock = QtWidgets.QDockWidget('StarDist 3D neural training', self)
             self.neural_dock.setObjectName('neuralTraining')
             self.neural_panel = NeuralPanel(self)
-            self.neural_dock.setWidget(self.neural_panel)
+            self.neural_scroll = self.scroll_panel(self.neural_panel)
+            self.neural_dock.setWidget(self.neural_scroll)
             self.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self.neural_dock)
             self.resizeDocks([self.neural_dock], [560], QtCore.Qt.Orientation.Vertical)
             if self.screen().availableGeometry().height() < 900:
                 self.neural_dock.setFloating(True)
-                self.neural_dock.resize(min(1200,self.screen().availableGeometry().width()),650)
+                self.fit_floating_dock(self.neural_dock)
         if self.pipeline_dock:
             self.pipeline_dock.hide()
         self.neural_dock.show()
         self.neural_dock.raise_()
+
+    @staticmethod
+    def scroll_panel(panel):
+        from .scrolling import PanelScrollArea
+        return PanelScrollArea(panel)
+
+    def fit_floating_dock(self, dock):
+        screen = self.screen().availableGeometry()
+        dock.resize(min(1200, screen.width() - 40), min(700, screen.height() - 80))
+        dock.move(screen.topLeft() + QtCore.QPoint(20, 30))
+
+    def open_neural_report(self):
+        self.show_neural()
+        self.neural_panel.load_report()
+
+    def auto_select_contours(self):
+        if self.entry is None or self.dataset is None or self._pending_load:
+            self.statusBar().showMessage('Open a scan and wait for it to finish loading first.')
+            return
+        self.show_neural()
+        if self.neural_panel.job:
+            self.neural_panel.show_error('A neural operation is already running. Wait for it or cancel it first.')
+            return
+        from .neural.model_picker import ModelPicker
+        dialog = ModelPicker(self.entry.image, self, preferred=self.neural_panel.model_path.text())
+        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            try:
+                self.neural_panel.apply_to_scan(self.entry, dialog.model_path)
+                self.neural_scroll.verticalScrollBar().setValue(0)
+            except Exception as exc:
+                self.neural_panel.show_error(str(exc))
 
     def open_pipeline_prediction(self, row):
         try:
