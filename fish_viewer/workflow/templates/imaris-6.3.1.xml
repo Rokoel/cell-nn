@@ -1,0 +1,256 @@
+<bpImarisApplication Version="Imaris 6.3.1">
+  <bpCommandLoadDataSet actorname="bpImarisApplication" actorid="1" file="image.ims" reader="All Formats" timereader="1" croplimitsmin="" croplimitsmax="" resample=""></bpCommandLoadDataSet>
+  <Thumbnail>
+    <bpImageField mNumberType="PackedRGBA" mDim="3" mSize0="969" mExtendMin0="0.000" mExtendMax0="9.323" mSize1="569" mExtendMin1="0.000" mExtendMax1="5.474" mSize2="1" mExtendMin2="0.000" mExtendMax2="1.000"></bpImageField>
+  </Thumbnail>
+  <bpViewerEasy3D>
+    <bpCommandViewer2DProjectionSetMode actorname="bpViewerEasy3D" actorid="6" value="0"></bpCommandViewer2DProjectionSetMode>
+    <bpCommandViewer2DProjectionSetLight actorname="bpViewerEasy3D" actorid="6" value="1"></bpCommandViewer2DProjectionSetLight>
+    <bpCommandViewer2DProjectionSetLightPosition actorname="bpViewerEasy3D" actorid="6" value="0"></bpCommandViewer2DProjectionSetLightPosition>
+    <bpCommandViewer2DProjectionSettings actorname="bpViewerEasy3D" actorid="6" Diffusion="1.000" Emission="0.100" OpacityCombinationMode="1" OpacityCombinationCoefficient="10.000"></bpCommandViewer2DProjectionSettings>
+    <bpCommandViewer2DProjectionSetCameraPosition actorname="bpViewerEasy3D" actorid="6" value="0"></bpCommandViewer2DProjectionSetCameraPosition>
+  </bpViewerEasy3D>
+  <bpSurfaceApplication>
+    <bpComponentGroup>
+      <bpSurfaceComponent>
+        <name>Surpass Scene</name>
+        <id>25</id>
+        <isHidden>false</isHidden>
+        <isNode>true</isNode>
+        <isExpanded>true</isExpanded>
+        <material>
+          <ambientColor>((0.200,0.200,0.200))</ambientColor>
+          <diffuseColor>((0.800,0.800,0.800))</diffuseColor>
+          <specularColor>((0.000,0.000,0.000))</specularColor>
+          <emissiveColor>((0.000,0.000,0.000))</emissiveColor>
+          <shininess>(0.200)</shininess>
+          <transparency>(0.000)</transparency>
+        </material>
+        <bpLightSource>
+          <bpSurfaceComponent>
+            <name>Light Source 1</name>
+            <id>26</id>
+            <isHidden>false</isHidden>
+            <isNode>false</isNode>
+            <isExpanded>false</isExpanded>
+            <material>
+              <ambientColor>((0.200,0.200,0.200))</ambientColor>
+              <diffuseColor>((0.800,0.800,0.800))</diffuseColor>
+              <specularColor>((0.000,0.000,0.000))</specularColor>
+              <emissiveColor>((0.000,0.000,0.000))</emissiveColor>
+              <shininess>(0.200)</shininess>
+              <transparency>(0.000)</transparency>
+            </material>
+          </bpSurfaceComponent>
+          <intensity>1.000</intensity>
+          <color red="1.000" green="1.000" blue="1.000"></color>
+          <direction>0.408 -0.408 -0.816</direction>
+          <mFixToDataSet>false</mFixToDataSet>
+        </bpLightSource>
+        <bpFrame>
+          <bpSurfaceComponent>
+            <name>Frame</name>
+            <id>27</id>
+            <isHidden>true</isHidden>
+            <isNode>false</isNode>
+            <isExpanded>false</isExpanded>
+            <material>
+              <ambientColor>((0.200,0.200,0.200))</ambientColor>
+              <diffuseColor>((1.000,1.000,1.000))</diffuseColor>
+              <specularColor>((0.000,0.000,0.000))</specularColor>
+              <emissiveColor>((0.000,0.000,0.000))</emissiveColor>
+              <shininess>(0.200)</shininess>
+              <transparency>(0.000)</transparency>
+            </material>
+          </bpSurfaceComponent>
+          <LabelMaterial>
+            <LabelAmbientColor>((0.200,0.200,0.200))</LabelAmbientColor>
+            <LabelDiffuseColor>((0.800,0.800,0.800))</LabelDiffuseColor>
+            <LabelSpecularColor>((0.000,0.000,0.000))</LabelSpecularColor>
+            <LabelEmissiveColor>((0.000,0.000,0.000))</LabelEmissiveColor>
+            <LabelShininess>(0.200)</LabelShininess>
+            <LabelTransparency>(0.000)</LabelTransparency>
+          </LabelMaterial>
+          <bpFrameSettings mVisibleBox="true" mGridSpacing="5.000" mVisibleGrid="true" mVisibleBoxShading="false" mVisibleTickMarks="true" mVisibleCoordinateAxes="false" mFixToCamera="true" mVisibleShadowing="false" mGridTransparency="8.000" mShadingTransparency="8.000" mLineWidth="1.000" mLabelFontName="Arial" mLabelFontSize="10" mLabelFontBold="false" mLabelFontItalic="false" mLabelFontUnderline="false"></bpFrameSettings>
+        </bpFrame>
+        <bpVolumeRenderer>
+          <bpSurfaceComponent>
+            <name>Volume</name>
+            <id>28</id>
+            <isHidden>true</isHidden>
+            <isNode>false</isNode>
+            <isExpanded>false</isExpanded>
+            <material>
+              <ambientColor>((0.200,0.200,0.200))</ambientColor>
+              <diffuseColor>((0.800,0.800,0.800))</diffuseColor>
+              <specularColor>((0.000,0.000,0.000))</specularColor>
+              <emissiveColor>((0.000,0.000,0.000))</emissiveColor>
+              <shininess>(0.200)</shininess>
+              <transparency>(0.000)</transparency>
+            </material>
+          </bpSurfaceComponent>
+          <renderingMode>MaxIntensityProjection</renderingMode>
+          <cutHighOrLow>1</cutHighOrLow>
+          <alphaValue>0.000</alphaValue>
+        </bpVolumeRenderer>
+        <bpComponentGroup>
+          <bpSurfaceComponent>
+            <name>Group 2</name>
+            <id>29</id>
+            <isHidden>true</isHidden>
+            <isNode>true</isNode>
+            <isExpanded>false</isExpanded>
+            <material>
+              <ambientColor>((0.200,0.200,0.200))</ambientColor>
+              <diffuseColor>((0.800,0.800,0.800))</diffuseColor>
+              <specularColor>((0.000,0.000,0.000))</specularColor>
+              <emissiveColor>((0.000,0.000,0.000))</emissiveColor>
+              <shininess>(0.200)</shininess>
+              <transparency>(0.000)</transparency>
+            </material>
+            <bpSurfacesViewer>
+              <bpSurfaceComponent>
+                <name>Surfaces 1_of_Contour Surface 1</name>
+                <id>31</id>
+                <isHidden>false</isHidden>
+                <isNode>false</isNode>
+                <isExpanded>false</isExpanded>
+                <material>
+                  <ambientColor>((0.200,0.200,0.200))</ambientColor>
+                  <diffuseColor>((0.800,0.800,0.800))</diffuseColor>
+                  <specularColor>((0.000,0.000,0.000))</specularColor>
+                  <emissiveColor>((0.000,0.000,0.000))</emissiveColor>
+                  <shininess>(0.200)</shininess>
+                  <transparency>(0.680)</transparency>
+                </material>
+              </bpSurfaceComponent>
+              <bpSurfacesProperties mColorCoding="eOff" mColorCodingFilterType="" mColorCodingShowScale="true" mColorCodingScaleShowTitle="true" mColorCodingScaleShowRange="true" mColorCodingRangeMin="0" mColorCodingRangeMax="0" mTransparency="0.68" mStyle="eTriangle" mCenterPointSize="5">
+                <mColorCodingTextMaterial mDiffusion="0 0 0" mSpecular="0 0 0" mEmission="0 0 0" mAmbient="0.2 0.2 0.2" mTransparency="0" mShinyness="0.2"></mColorCodingTextMaterial>
+                <mColorCodingColorTable>1.00000000 0.00000000 0.00000000,1.00000000 0.00392157 0.00000000,1.00000000 0.00784314 0.00000000,1.00000000 0.01176471 0.00000000,1.00000000 0.01568628 0.00000000,1.00000000 0.01960784 0.00000000,1.00000000 0.02352941 0.00000000,1.00000000 0.02745098 0.00000000,1.00000000 0.03137255 0.00000000,1.00000000 0.03529412 0.00000000,1.00000000 0.03921569 0.00000000,1.00000000 0.04313726 0.00000000,1.00000000 0.04705882 0.00000000,1.00000000 0.05098039 0.00000000,1.00000000 0.05490196 0.00000000,1.00000000 0.05882353 0.00000000,1.00000000 0.06274510 0.00000000,1.00000000 0.06666667 0.00000000,1.00000000 0.07058824 0.00000000,1.00000000 0.07450981 0.00000000,
+1.00000000 0.07843138 0.00000000,1.00000000 0.08235294 0.00000000,1.00000000 0.08627451 0.00000000,1.00000000 0.09019608 0.00000000,1.00000000 0.09411765 0.00000000,1.00000000 0.09803922 0.00000000,1.00000000 0.10196079 0.00000000,1.00000000 0.10588235 0.00000000,1.00000000 0.10980392 0.00000000,1.00000000 0.11372549 0.00000000,1.00000000 0.11764706 0.00000000,1.00000000 0.12156863 0.00000000,1.00000000 0.12549020 0.00000000,1.00000000 0.12941177 0.00000000,1.00000000 0.13333334 0.00000000,1.00000000 0.13725491 0.00000000,1.00000000 0.14117648 0.00000000,1.00000000 0.14509805 0.00000000,1.00000000 0.14901961 0.00000000,1.00000000 0.15294118 0.00000000,
+1.00000000 0.15686275 0.00000000,1.00000000 0.16078432 0.00000000,1.00000000 0.16470589 0.00000000,1.00000000 0.16862746 0.00000000,1.00000000 0.17254902 0.00000000,1.00000000 0.17647059 0.00000000,1.00000000 0.18039216 0.00000000,1.00000000 0.18431373 0.00000000,1.00000000 0.18823530 0.00000000,1.00000000 0.19215687 0.00000000,1.00000000 0.19607843 0.00000000,1.00000000 0.20000000 0.00000000,1.00000000 0.20392157 0.00000000,1.00000000 0.20784314 0.00000000,1.00000000 0.21176471 0.00000000,1.00000000 0.21568628 0.00000000,1.00000000 0.21960784 0.00000000,1.00000000 0.22352941 0.00000000,1.00000000 0.22745098 0.00000000,1.00000000 0.23137255 0.00000000,
+1.00000000 0.23529412 0.00000000,1.00000000 0.23921569 0.00000000,1.00000000 0.24313726 0.00000000,1.00000000 0.24705882 0.00000000,1.00000000 0.25098041 0.00000000,1.00000000 0.25490198 0.00000000,1.00000000 0.25882354 0.00000000,1.00000000 0.26274511 0.00000000,1.00000000 0.26666668 0.00000000,1.00000000 0.27058825 0.00000000,1.00000000 0.27450982 0.00000000,1.00000000 0.27843139 0.00000000,1.00000000 0.28235295 0.00000000,1.00000000 0.28627452 0.00000000,1.00000000 0.29019609 0.00000000,1.00000000 0.29411766 0.00000000,1.00000000 0.29803923 0.00000000,1.00000000 0.30196080 0.00000000,1.00000000 0.30588236 0.00000000,1.00000000 0.30980393 0.00000000,
+1.00000000 0.31372550 0.00000000,1.00000000 0.31764707 0.00000000,1.00000000 0.32156864 0.00000000,1.00000000 0.32549021 0.00000000,1.00000000 0.32941177 0.00000000,1.00000000 0.33333334 0.00000000,1.00000000 0.33725491 0.00000000,1.00000000 0.34117648 0.00000000,1.00000000 0.34509805 0.00000000,1.00000000 0.34901962 0.00000000,1.00000000 0.35294119 0.00000000,1.00000000 0.35686275 0.00000000,1.00000000 0.36078432 0.00000000,1.00000000 0.36470589 0.00000000,1.00000000 0.36862746 0.00000000,1.00000000 0.37254903 0.00000000,1.00000000 0.37647060 0.00000000,1.00000000 0.38039216 0.00000000,1.00000000 0.38431373 0.00000000,1.00000000 0.38823530 0.00000000,
+1.00000000 0.39215687 0.00000000,1.00000000 0.39607844 0.00000000,1.00000000 0.40000001 0.00000000,1.00000000 0.40392157 0.00000000,1.00000000 0.40784314 0.00000000,1.00000000 0.41176471 0.00000000,1.00000000 0.41568628 0.00000000,1.00000000 0.41960785 0.00000000,1.00000000 0.42352942 0.00000000,1.00000000 0.42745098 0.00000000,1.00000000 0.43137255 0.00000000,1.00000000 0.43529412 0.00000000,1.00000000 0.43921569 0.00000000,1.00000000 0.44313726 0.00000000,1.00000000 0.44705883 0.00000000,1.00000000 0.45098040 0.00000000,1.00000000 0.45490196 0.00000000,1.00000000 0.45882353 0.00000000,1.00000000 0.46274510 0.00000000,1.00000000 0.46666667 0.00000000,
+1.00000000 0.47058824 0.00000000,1.00000000 0.47450981 0.00000000,1.00000000 0.47843137 0.00000000,1.00000000 0.48235294 0.00000000,1.00000000 0.48627451 0.00000000,1.00000000 0.49019608 0.00000000,1.00000000 0.49411765 0.00000000,1.00000000 0.49803922 0.00000000,1.00000000 0.50196081 0.00000000,1.00000000 0.50588238 0.00000000,1.00000000 0.50980395 0.00000000,1.00000000 0.51372552 0.00000000,1.00000000 0.51764709 0.00000000,1.00000000 0.52156866 0.00000000,1.00000000 0.52549022 0.00000000,1.00000000 0.52941179 0.00000000,1.00000000 0.53333336 0.00000000,1.00000000 0.53725493 0.00000000,1.00000000 0.54117650 0.00000000,1.00000000 0.54509807 0.00000000,
+1.00000000 0.54901963 0.00000000,1.00000000 0.55294120 0.00000000,1.00000000 0.55686277 0.00000000,1.00000000 0.56078434 0.00000000,1.00000000 0.56470591 0.00000000,1.00000000 0.56862748 0.00000000,1.00000000 0.57254905 0.00000000,1.00000000 0.57647061 0.00000000,1.00000000 0.58039218 0.00000000,1.00000000 0.58431375 0.00000000,1.00000000 0.58823532 0.00000000,1.00000000 0.59215689 0.00000000,1.00000000 0.59607846 0.00000000,1.00000000 0.60000002 0.00000000,1.00000000 0.60392159 0.00000000,1.00000000 0.60784316 0.00000000,1.00000000 0.61176473 0.00000000,1.00000000 0.61568630 0.00000000,1.00000000 0.61960787 0.00000000,1.00000000 0.62352943 0.00000000,
+1.00000000 0.62745100 0.00000000,1.00000000 0.63137257 0.00000000,1.00000000 0.63529414 0.00000000,1.00000000 0.63921571 0.00000000,1.00000000 0.64313728 0.00000000,1.00000000 0.64705884 0.00000000,1.00000000 0.65098041 0.00000000,1.00000000 0.65490198 0.00000000,1.00000000 0.65882355 0.00000000,1.00000000 0.66274512 0.00000000,1.00000000 0.66666669 0.00000000,1.00000000 0.67058825 0.00000000,1.00000000 0.67450982 0.00000000,1.00000000 0.67843139 0.00000000,1.00000000 0.68235296 0.00000000,1.00000000 0.68627453 0.00000000,1.00000000 0.69019610 0.00000000,1.00000000 0.69411767 0.00000000,1.00000000 0.69803923 0.00000000,1.00000000 0.70196080 0.00000000,
+1.00000000 0.70588237 0.00000000,1.00000000 0.70980394 0.00000000,1.00000000 0.71372551 0.00000000,1.00000000 0.71764708 0.00000000,1.00000000 0.72156864 0.00000000,1.00000000 0.72549021 0.00000000,1.00000000 0.72941178 0.00000000,1.00000000 0.73333335 0.00000000,1.00000000 0.73725492 0.00000000,1.00000000 0.74117649 0.00000000,1.00000000 0.74509805 0.00000000,1.00000000 0.74901962 0.00000000,1.00000000 0.75294119 0.00000000,1.00000000 0.75686276 0.00000000,1.00000000 0.76078433 0.00000000,1.00000000 0.76470590 0.00000000,1.00000000 0.76862746 0.00000000,1.00000000 0.77254903 0.00000000,1.00000000 0.77647060 0.00000000,1.00000000 0.78039217 0.00000000,
+1.00000000 0.78431374 0.00000000,1.00000000 0.78823531 0.00000000,1.00000000 0.79215688 0.00000000,1.00000000 0.79607844 0.00000000,1.00000000 0.80000001 0.00000000,1.00000000 0.80392158 0.00000000,1.00000000 0.80784315 0.00000000,1.00000000 0.81176472 0.00000000,1.00000000 0.81568629 0.00000000,1.00000000 0.81960785 0.00000000,1.00000000 0.82352942 0.00000000,1.00000000 0.82745099 0.00000000,1.00000000 0.83137256 0.00000000,1.00000000 0.83529413 0.00000000,1.00000000 0.83921570 0.00000000,1.00000000 0.84313726 0.00000000,1.00000000 0.84705883 0.00000000,1.00000000 0.85098040 0.00000000,1.00000000 0.85490197 0.00000000,1.00000000 0.85882354 0.00000000,
+1.00000000 0.86274511 0.00000000,1.00000000 0.86666667 0.00000000,1.00000000 0.87058824 0.00000000,1.00000000 0.87450981 0.00000000,1.00000000 0.87843138 0.00000000,1.00000000 0.88235295 0.00000000,1.00000000 0.88627452 0.00000000,1.00000000 0.89019608 0.00000000,1.00000000 0.89411765 0.00000000,1.00000000 0.89803922 0.00000000,1.00000000 0.90196079 0.00000000,1.00000000 0.90588236 0.00000000,1.00000000 0.90980393 0.00000000,1.00000000 0.91372550 0.00000000,1.00000000 0.91764706 0.00000000,1.00000000 0.92156863 0.00000000,1.00000000 0.92549020 0.00000000,1.00000000 0.92941177 0.00000000,1.00000000 0.93333334 0.00000000,1.00000000 0.93725491 0.00000000,
+1.00000000 0.94117647 0.00000000,1.00000000 0.94509804 0.00000000,1.00000000 0.94901961 0.00000000,1.00000000 0.95294118 0.00000000,1.00000000 0.95686275 0.00000000,1.00000000 0.96078432 0.00000000,1.00000000 0.96470588 0.00000000,1.00000000 0.96862745 0.00000000,1.00000000 0.97254902 0.00000000,1.00000000 0.97647059 0.00000000,1.00000000 0.98039216 0.00000000,1.00000000 0.98431373 0.00000000,1.00000000 0.98823529 0.00000000,1.00000000 0.99215686 0.00000000,1.00000000 0.99607843 0.00000000,1.00000000 1.00000000 0.00000000</mColorCodingColorTable>
+              </bpSurfacesProperties>
+              <bpTracksProperties mColorCoding="eColormap" mColorCodingFilterType="" mColorCodingShowScale="true" mColorCodingScaleShowTitle="true" mColorCodingScaleShowRange="true" mColorCodingRangeMin="0" mColorCodingRangeMax="0" mTransparency="0" mUnit="um" mStyle="eLine" mLineWidth="1" mCylinderDiameter="1" mRenderQuality="0.5" mEnabledDirectPath="false" mDirectPathRadiusScale="1" mEnabledDragonTail="false" mDragonTailLength="4">
+                <mColorCodingTextMaterial mDiffusion="0 0 0" mSpecular="0 0 0" mEmission="0 0 0" mAmbient="0.2 0.2 0.2" mTransparency="0" mShinyness="0.2"></mColorCodingTextMaterial>
+                <mColorCodingColorTable></mColorCodingColorTable>
+                <mTracksBaseMaterial mDiffusion="0.8 0.8 0.8" mSpecular="0 0 0" mEmission="0 0 0" mAmbient="0.2 0.2 0.2" mTransparency="0" mShinyness="0.2"></mTracksBaseMaterial>
+                <mTracksDirectPathMaterial mDiffusion="1 1 1" mSpecular="0 0 0" mEmission="0 0 0" mAmbient="0.2 0.2 0.2" mTransparency="0" mShinyness="0.2"></mTracksDirectPathMaterial>
+                <mColorMappingTable></mColorMappingTable>
+              </bpTracksProperties>
+              <bpSurfaces>
+                <name>Objects 1</name>
+                <description></description>
+                <historyLog></historyLog>
+                <unit>um</unit>
+                <bpMaterial mDiffusion="0.8 0.8 0.8" mSpecular="0.2 0.2 0.2" mEmission="0 0 0" mAmbient="0 0 0" mTransparency="0" mShinyness="0.1"></bpMaterial>
+                <bpSurfacesCreationParameters mEnableRegionOfInterest="false" mProcessEntireImage="true" mEnableRegionGrowing="false" mEnableTracking="false" mSourceChannelIndex="0" mEnableSmooth="true" mSurfaceGrainSize="0.186012" mEnableEliminateBackground="false" mDiameterOfLargestSphere="0.697545" mEnableAutomaticThreshold="true" mManualThresholdValue="200" mRegionGrowingEstimatedDiameter="0.93006" mRegionGrowingBackgroundSubtraction="true">
+                  <bpRegionOfInterestContainer>
+                    <bpRegionOfInterest mMinXYZ="128 128 0" mMaxXYZ="383 383 41" mMinT="0" mMaxT="0" mName="Region of Interest 1" mActive="true" mSelected="false"></bpRegionOfInterest>
+                  </bpRegionOfInterestContainer>
+                  <mRegionGrowingFilter>
+                    <bpStatisticsFilter mLowerThresholdEnable="true" mLowerThresholdManual="false" mLowerThresholdManualInitToAuto="true" mLowerThresholdManualValue="0" mUpperThresholdEnable="false" mUpperThresholdManual="false" mUpperThresholdManualInitToAuto="true" mUpperThresholdManualValue="0" mSelectHigh="true" mManualThreshold="false" mManualThresholdValue="0.000" mInitManualThresholdToAuto="true">
+                      <bpStatisticsValueType mName="Quality" mUnit="" mFactors="0"></bpStatisticsValueType>
+                    </bpStatisticsFilter>
+                  </mRegionGrowingFilter>
+                  <mSurfacesFilter>
+                    <bpStatisticsFilter mLowerThresholdEnable="true" mLowerThresholdManual="false" mLowerThresholdManualInitToAuto="false" mLowerThresholdManualValue="10" mUpperThresholdEnable="false" mUpperThresholdManual="false" mUpperThresholdManualInitToAuto="false" mUpperThresholdManualValue="10" mSelectHigh="true" mManualThreshold="false" mManualThresholdValue="10.000" mInitManualThresholdToAuto="false">
+                      <bpStatisticsValueType mName="Number of Voxels" mUnit="" mFactors="0"></bpStatisticsValueType>
+                    </bpStatisticsFilter>
+                  </mSurfacesFilter>
+                  <bpObjectTrackingAlgorithmParameters TrackAlgoName="Autoregressive Motion">
+                    <ObjectTrackingAlgorithmLinearAsignment MaxGapSize="3" MaxDistance="20"></ObjectTrackingAlgorithmLinearAsignment>
+                  </bpObjectTrackingAlgorithmParameters>
+                  <mTrackFilter>
+                    <bpStatisticsFilter mLowerThresholdEnable="true" mLowerThresholdManual="true" mLowerThresholdManualInitToAuto="false" mLowerThresholdManualValue="2.5" mUpperThresholdEnable="false" mUpperThresholdManual="true" mUpperThresholdManualInitToAuto="false" mUpperThresholdManualValue="2.5" mSelectHigh="true" mManualThreshold="true" mManualThresholdValue="2.500" mInitManualThresholdToAuto="false">
+                      <bpStatisticsValueType mName="Track Duration" mUnit="" mFactors="0"></bpStatisticsValueType>
+                    </bpStatisticsFilter>
+                  </mTrackFilter>
+                </bpSurfacesCreationParameters>
+                <timeInfo index="0" time="1970-01-01 00:00:00.000"></timeInfo>
+                <surface>
+                  <timeIndex>0</timeIndex>
+                </surface>
+              </bpSurfaces>
+            </bpSurfacesViewer>
+            <bpOrthoSlicer>
+              <bpSurfaceComponent>
+                <name>Ortho Slicer 1</name>
+                <id>34</id>
+                <isHidden>true</isHidden>
+                <isNode>false</isNode>
+                <isExpanded>false</isExpanded>
+                <material>
+                  <ambientColor>((0.200,0.200,0.200))</ambientColor>
+                  <diffuseColor>((0.800,0.800,0.800))</diffuseColor>
+                  <specularColor>((0.000,0.000,0.000))</specularColor>
+                  <emissiveColor>((0.000,0.000,0.000))</emissiveColor>
+                  <shininess>(0.200)</shininess>
+                  <transparency>(0.000)</transparency>
+                </material>
+              </bpSurfaceComponent>
+              <bpOrthogonalSlicerInventor mDirection="eDirectionZ" mSlice="0.524" mSliceExtension="0.000" mBorderColor="1.00000000 1.00000000 1.00000000" mFrame="true" mExtendedSectionFront="true"></bpOrthogonalSlicerInventor>
+            </bpOrthoSlicer>
+            <bpMeasurementPoints>
+              <bpSurfaceComponent>
+                <name>Measurement Points 1</name>
+                <id>40</id>
+                <isHidden>false</isHidden>
+                <isNode>false</isNode>
+                <isExpanded>false</isExpanded>
+                <material>
+                  <ambientColor>((0.200,0.200,0.200))</ambientColor>
+                  <diffuseColor>((1.000,1.000,1.000))</diffuseColor>
+                  <specularColor>((0.000,0.000,0.000))</specularColor>
+                  <emissiveColor>((0.000,0.000,0.000))</emissiveColor>
+                  <shininess>(0.200)</shininess>
+                  <transparency>(0.000)</transparency>
+                </material>
+              </bpSurfaceComponent>
+              <PointShape Shape="Sphere" Filled="true"></PointShape>
+              <PointDiameter>0.024</PointDiameter>
+              <PointLabels Name="true" Intensity="false"></PointLabels>
+              <LineMode>Polygon</LineMode>
+              <VisibleForAllTimepoints>true</VisibleForAllTimepoints>
+              <LineWidth>1</LineWidth>
+              <LineLabels Distance="true" Velocity="false"></LineLabels>
+              <LabelsColor>1.00000000 1.00000000 1.00000000</LabelsColor>
+              <LabelsFont Name="Arial" Size="12" Bold="false" Italic="false" Underline="false"></LabelsFont>
+              <AutodepthMode Intersect="SolidObjects"></AutodepthMode>
+            </bpMeasurementPoints>
+          </bpSurfaceComponent>
+        </bpComponentGroup>
+      </bpSurfaceComponent>
+    </bpComponentGroup>
+    <SoPerspectiveCamera>
+      <viewportMapping>3</viewportMapping>
+      <position>(38.278, 15.026, 3.853)</position>
+      <orientation>(0.765, -0.620, -0.174, 1.213)</orientation>
+      <aspectRatio>1.000</aspectRatio>
+      <focalDistance>5.597</focalDistance>
+      <heightAngle>0.785</heightAngle>
+    </SoPerspectiveCamera>
+    <bpKeyFrameAnimatorDialog>
+      <bpCommandKeyframeDeleteAll actorname="bpKeyFrameAnimatorDialog" actorid="18"></bpCommandKeyframeDeleteAll>
+      <PlayBackStateCamera>true</PlayBackStateCamera>
+      <PlayBackStateTimePoints>true</PlayBackStateTimePoints>
+      <PlayBackStateClippingPlanes>true</PlayBackStateClippingPlanes>
+      <PlayBackStateOrthoSlicers>true</PlayBackStateOrthoSlicers>
+      <PlayBackStateObliqueSlicers>true</PlayBackStateObliqueSlicers>
+      <PlayBackStateShowHides>false</PlayBackStateShowHides>
+      <PlayBackStateColors>false</PlayBackStateColors>
+      <PlayBackStateDisplayAdjustment>true</PlayBackStateDisplayAdjustment>
+    </bpKeyFrameAnimatorDialog>
+  </bpSurfaceApplication>
+  <bpInPress>
+</bpInPress>
+</bpImarisApplication>

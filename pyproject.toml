@@ -32,6 +32,9 @@ fish-viewer = "fish_viewer.__main__:main"
 [tool.setuptools.packages.find]
 include = ["fish_viewer*"]
 
+[tool.setuptools.package-data]
+"fish_viewer.workflow" = ["templates/*.xml"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["integration: tests using local FISH data", "gui: offscreen GUI and rendering tests", "neural: real optional StarDist CPU training"]

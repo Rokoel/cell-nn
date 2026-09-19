@@ -158,7 +158,8 @@ def parse_scene(data: bytes | str, source: Path | None = None) -> Scene:
     for tag in ('bpSpots', 'bpFilaments'):
         if root.find('.//' + tag) is not None:
             result.warnings.append(f'{tag} annotations are not supported by this XML reader.')
-    if any(el.tag is ET.Comment and (el.text or '').startswith('FISH Viewer exported detections;') for el in root):
+    if (any(el.tag is ET.Comment and (el.text or '').startswith('FISH Viewer exported detections;') for el in root)
+            or any((el.text or '').startswith('FISH Viewer exported detections;') for el in root.iter('historyLog'))):
         for surface in result.surfaces:
             surface.source = 'prediction'
         for measurement in result.measurements:

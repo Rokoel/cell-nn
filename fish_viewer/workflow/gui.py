@@ -119,7 +119,7 @@ class WorkflowPanel(QtWidgets.QWidget):
         self.export_button = QtWidgets.QPushButton('Export current result as Imaris…')
         self.export_button.clicked.connect(self.export_current)
         layout.addWidget(self.export_button)
-        export_note = QtWidgets.QLabel('Export creates an unchanged .ims image and an .imx scene with the retained 3D contours and signal annotations, plus CSV counts and scores. Keep the pair together. The export opens automatically in the viewer.')
+        export_note = QtWidgets.QLabel('Export creates an unchanged .ims image and an .imx scene using the Imaris 6.3.1 structure from FISH, plus CSV counts and scores. Keep the pair together. Open the .imx in Imaris to load the contours and signals; the .ims contains the image only.')
         export_note.setWordWrap(True)
         layout.addWidget(export_note)
         layout.addStretch()
