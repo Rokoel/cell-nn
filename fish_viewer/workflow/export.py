@@ -70,6 +70,8 @@ def export_result(report_path, target, emit=lambda event: None, cancel=None):
     if not report.get('signal_filter') or report['signal_filter'] != cell_metadata.get('signal_filter'):
         raise ValueError('Remove cells without signals before exporting this workflow result.')
     surfaces, _ = read_prediction(report['cell_predictions'])
+    from .distances import validate_measurements
+    validate_measurements(report, surfaces, metadata)
     if len(surfaces) != len({point['cell_id'] for point in report['points']}):
         raise ValueError('The filtered contour set does not match the detected signals.')
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -86,14 +88,18 @@ def export_result(report_path, target, emit=lambda event: None, cancel=None):
         (staging / target.with_suffix('.annotations.json').name).write_text(json.dumps(annotation_report, indent=2, allow_nan=False), encoding='utf-8')
         emit(dict(kind='progress', phase='Verifying exported scene', current=0, total=1))
         reopened = load_dataset(LibraryEntry(staging / target.name, staging / target.with_suffix('.imx').name))
+        expected_points = len(report['points']) * (2 if report.get('measurement') else 1)
+        expected_lines = len(report['points']) if report.get('measurement') else 0
         if (len(reopened.scene.surfaces) != len(surfaces) or reopened.scene.warnings
-                or sum(len(group.points) for group in reopened.scene.measurements) != len(report['points'])):
+                or sum(len(group.points) for group in reopened.scene.measurements) != expected_points
+                or sum(len(group.edges) for group in reopened.scene.measurements) != expected_lines):
             raise ValueError('Exported annotations failed the reload check.')
         checkpoint(cancel)
         _publish(staging, destinations)
     emit(dict(kind='progress', phase='Export complete', current=1, total=1))
     return dict(status='complete', image=str(target), scene=str(target.with_suffix('.imx')),
-                cells=len(surfaces), signals=len(report['points']), image_sha256=digest, files=[str(path) for path in destinations])
+                cells=len(surfaces), signals=len(report['points']), measurements=expected_lines,
+                image_sha256=digest, files=[str(path) for path in destinations])
 
 
 def export_unannotated(source, target, emit=lambda event: None, cancel=None):

@@ -28,6 +28,7 @@ neural-gpu = ["stardist>=0.9.2,<0.10", "tensorflow[and-cuda]>=2.20,<2.22; sys_pl
 
 [project.scripts]
 fish-viewer = "fish_viewer.__main__:main"
+fish-analysis = "fish_viewer.analysis.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["fish_viewer*"]

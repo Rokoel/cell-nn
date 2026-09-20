@@ -167,21 +167,28 @@ def scene_xml(image_name, surfaces, metadata, report):
         _mesh(objects, surface)
         marker_prototype = component.find('bpMeasurementPoints')
         component.remove(marker_prototype)
-        # All 3,455 native measurement objects use Polygon; one object per center
-        # avoids both connecting unrelated signals and inventing an enum value.
+        # Native FISH measurements are separate A/B pairs in Polygon mode.
+        # Earlier signal-only reports still export a single unconnected center.
         for point in grouped.get(cell, []):
             marker = deepcopy(marker_prototype)
             channel = point['channel']
             channel_info = report['channels'][channel]
             label = (f'Signal {point["signal_id"]}; cell {cell}; channel {channel+1}; '
                      f'score {point["score"]:.12g}')
+            has_border = bool(report.get('measurement'))
+            if has_border:
+                label += f'; distance {point["distance_um"]:.6g} um'
             _component(marker, label + ' - ' + channel_info['name'], channel_info['color'])
-            marker.insert(1, ET.Element('Point', Name=label,
+            marker.insert(1, ET.Element('Point', Name='A' if has_border else label,
                           Position=' '.join(f'{v:.12g}' for v in point['xyz']),
                           TimeIndex=str(report.get('time', 0))))
+            if has_border:
+                marker.insert(2, ET.Element('Point', Name='B',
+                              Position=' '.join(f'{v:.12g}' for v in point['border_xyz']),
+                              TimeIndex=str(report.get('time', 0))))
             _set(marker, 'PointDiameter', '0.15')
             _set(marker, 'VisibleForAllTimepoints', 'false')
-            marker.find('LineLabels').set('Distance', 'false')
+            marker.find('LineLabels').set('Distance', 'true' if has_border else 'false')
             component.append(marker)
         scene.append(group)
     for identifier, component in enumerate(root.iter('bpSurfaceComponent'), 25):
@@ -257,9 +264,13 @@ def validate_scene(root, metadata):
                     or int(mesh.findtext('timeIndex')) not in time_indices):
                 raise ValueError('Invalid Imaris mesh indices or time index.')
     for marker in root.iter('bpMeasurementPoints'):
-        if marker.findtext('LineMode') != 'Polygon' or len(marker.findall('Point')) != 1:
-            raise ValueError('Exported signal centers require separate native measurement objects.')
-        point = marker.find('Point')
-        values = numbers(point.get('Position'))
-        if len(values) != 3 or not np.isfinite(values).all() or int(point.get('TimeIndex')) not in metadata.times:
-            raise ValueError('Invalid Imaris signal position or time.')
+        points = marker.findall('Point')
+        if marker.findtext('LineMode') != 'Polygon' or len(points) not in (1, 2):
+            raise ValueError('Each Imaris measurement must contain one signal or one A/B pair.')
+        if len(points) == 2 and ([p.get('Name') for p in points] != ['A', 'B']
+                                or marker.find('LineLabels').get('Distance') != 'true'):
+            raise ValueError('Border measurements require A/B labels and a distance line.')
+        for point in points:
+            values = numbers(point.get('Position'))
+            if len(values) != 3 or not np.isfinite(values).all() or int(point.get('TimeIndex')) not in metadata.times:
+                raise ValueError('Invalid Imaris signal position or time.')

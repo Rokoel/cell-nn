@@ -316,7 +316,7 @@ class VolumeView(QtWidgets.QWidget):
                 if contour.visible:
                     curve = pv.lines_from_points(contour.vertices(self.dataset.metadata), close=True)
                     actor = self.plotter.add_mesh(curve, color='#4ee5c3' if self.selected == ('contour', i) else contour.color,
-                        line_width=2, render=False)
+                        line_width=2, render=False, reset_camera=False)
                     self._annotation_actors.append(actor)
         for i, measure in enumerate(self.dataset.scene.measurements):
             if not measure.visible:
@@ -325,14 +325,28 @@ class VolumeView(QtWidgets.QWidget):
             visible = np.asarray([measure.all_times or t == self.dataset.time for t in measure.times])
             if self.markers_visible and visible.any():
                 actor = self.plotter.add_points(measure.points[visible], color=color, point_size=9,
-                    render_points_as_spheres=True, render=False, show_scalar_bar=False)
+                    render_points_as_spheres=True, render=False, show_scalar_bar=False, reset_camera=False)
                 self._annotation_actors.append(actor)
+                if self.selected == ('measurement', i) and measure.labels == ['A', 'B']:
+                    actor = self.plotter.add_point_labels(measure.points[visible],
+                        [text for text, shown in zip(measure.labels, visible) if shown],
+                        font_size=15, text_color='#e6fff8', show_points=False,
+                        shape_color='#102521', shape_opacity=.8, always_visible=True,
+                        reset_camera=False, render=False)
+                    self._annotation_actors.append(actor)
             if self.lines_visible:
                 pairs = [(a, b) for a, b in measure.edges if visible[a] and visible[b]]
                 if pairs:
                     segments = np.asarray([[measure.points[a], measure.points[b]] for a, b in pairs]).reshape(-1, 3)
                     actor = self.plotter.add_lines(segments, color=color, width=2, connected=False)
                     self._annotation_actors.append(actor)
+                    if self.selected == ('measurement', i) and measure.labels == ['A', 'B']:
+                        # A/B can be closer together on screen than the width of
+                        # a distance label. Keep the value away from their markers.
+                        actor = self.plotter.add_text(f'A-B: {measure.length:.3f} {self.dataset.metadata.unit}',
+                            position='upper_left', font_size=11, color='#e6fff8',
+                            name='selected-ab-distance', render=False)
+                        self._annotation_actors.append(actor)
         self.plotter.render()
 
     def fit(self):

@@ -22,6 +22,18 @@ def read_signals(path,expected_fingerprint=None):
     for (cell,channel),points in sorted(groups.items()):
         if not 0<=channel<len(report['channels']):raise ValueError('Invalid signal channel.')
         color=tuple(report['channels'][channel]['color'])
+        if report.get('measurement'):
+            for point in points:
+                border = np.asarray(point.get('border_xyz'), dtype=float)
+                distance = point.get('distance_um', float('nan'))
+                if (border.shape != (3,) or not np.isfinite(border).all() or not np.isfinite(distance)
+                        or distance < 0 or not np.isclose(np.linalg.norm(border-point['xyz']), distance, atol=1e-5)):
+                    raise ValueError('Invalid saved A/B border measurement.')
+                name = f'Signal {point["signal_id"]} · cell {cell} · channel {channel+1} · {distance:.3f} µm'
+                result.append(Measurement(name, np.array([point['xyz'], border]), ['A', 'B'],
+                    [report.get('time', 0)]*2, edges=[(0, 1)], color=color,
+                    all_times=False, source='signal_prediction'))
+            continue
         labels=[f'Signal {p["signal_id"]} · score {p["score"]:.3f}' for p in points]
         result.append(Measurement(f'NN signals · cell {cell} · channel {channel+1} · {len(points)} signals',
             np.array([p['xyz'] for p in points]),labels,[0]*len(points),color=color,all_times=False,source='signal_prediction'))

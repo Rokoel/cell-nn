@@ -63,8 +63,11 @@ def validated_result(path, cancel=None):
 def write_tables(directory, report, prefix=''):
     """CSV channel numbers are one-based, as displayed in the viewer."""
     directory = Path(directory)
+    signal_fields = ['signal_id', 'cell_id', 'channel', 'x_um', 'y_um', 'z_um', 'score', 'contrast']
+    if report.get('measurement'):
+        signal_fields += ['b_x_um', 'b_y_um', 'b_z_um', 'distance_um', 'border_at_image_edge']
     for name, rows, fields in [
-        ('signals', report['points'], ['signal_id', 'cell_id', 'channel', 'x_um', 'y_um', 'z_um', 'score', 'contrast']),
+        ('signals', report['points'], signal_fields),
         ('cell-counts', report['counts'], ['cell_id', 'channel', 'channel_name', 'count']),
     ]:
         with (directory / f'{prefix}{name}.csv').open('w', newline='', encoding='utf-8') as stream:
@@ -74,12 +77,19 @@ def write_tables(directory, report, prefix=''):
                 values = dict(row, channel=row['channel'] + 1)
                 if name == 'signals':
                     values.update(zip(('x_um', 'y_um', 'z_um'), values.pop('xyz')))
+                    if 'border_xyz' in values:
+                        values.update(zip(('b_x_um', 'b_y_um', 'b_z_um'), values.pop('border_xyz')))
                 writer.writerow({key: values.get(key, '') for key in fields})
 
 
 def filter_result(path, output, emit=lambda event: None, cancel=None):
     emit(dict(kind='progress', phase='Checking source pixels and signal membership', current=0, total=3))
     report, labels, metadata, _ = validated_result(path, cancel)
+    # Measurements are tied to one contour archive. A new filter result needs
+    # its own measurement stage, even when the surviving mesh geometry is equal.
+    report.pop('measurement', None)
+    report['points'] = [{k: v for k, v in p.items() if k not in
+                        ('border_xyz', 'distance_um', 'border_triangle', 'border_at_image_edge')} for p in report['points']]
     kept = sorted({int(point['cell_id']) for point in report['points']})
     original = [int(value) for value in np.unique(labels) if value > 0]
     removed = sorted(set(original) - set(kept))

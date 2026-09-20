@@ -23,9 +23,10 @@ The replacement preserves the native field hierarchy and ordering, including
 the per-cell component groups. Surface timestamps come from the source image.
 Meshes use at most 400 records per XML block, 40 quoted lines per block, and
 10 records per line, matching the native files. Each record is six numbers for
-a vertex/normal or three triangle indices. Each signal is a separate, single-point
-measurement object using the native `Polygon` mode, so unrelated signals are not
-connected. Component IDs are unique. The image filename remains relative for
+a vertex/normal or three triangle indices. Each signal has its own measurement
+object using the native `Polygon` mode, so unrelated signals are not connected.
+Signal-only reports contain one point. Measured results from **FISH Analysis**
+contain `A` and `B` with distance labels enabled. Component IDs are unique. The image filename remains relative for
 portability. XML has native-style CRLF line endings and no added declaration or
 comments. A provenance string is stored in the existing surface history field.
 
