@@ -25,7 +25,8 @@ def validated_result(path, cancel=None):
     with np.load(report['cell_predictions'], allow_pickle=False) as archive:
         labels = archive['labels'].copy()
         metadata = json.loads(str(archive['metadata']))
-    if (metadata.get('version') != 1 or 'rays' not in metadata.get('config', {})
+    if (metadata.get('version') != 1 or ('rays' not in metadata.get('config', {})
+            and metadata.get('detector', {}).get('engine') != 'cell-center-box3d')
             or labels.ndim != 3 or not labels.size or not np.issubdtype(labels.dtype, np.integer)
             or labels.min() < 0 or labels.max() > 100_000 or metadata.get('time', 0) != 0):
         raise ValueError('A valid neural cell prediction archive is required.')

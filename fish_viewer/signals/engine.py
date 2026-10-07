@@ -206,7 +206,12 @@ def apply(image,scene,cell_predictions,model_directory,output,device='auto',emit
         config=SignalConfig(**manifest['config']).validate()
         with np.load(cell_predictions,allow_pickle=False) as archive:
             labels=archive['labels'];metadata=json.loads(str(archive['metadata']))
-        if 'rays' not in metadata.get('config',{}):raise ValueError('Select neural-network cell contours, not classical contours.')
+        if 'rays' not in metadata.get('config',{}) and metadata.get('detector',{}).get('engine')!='cell-center-box3d':
+            raise ValueError('Select neural-network cell contours, not classical contours.')
+        if metadata.get('detector'):
+            report['cell_detector']=metadata['detector']
+        if metadata.get('refinement'):
+            report['boundary_refinement']=metadata['refinement']
         progress('Loading signal channels',0,1)
         dataset=load_dataset(LibraryEntry(Path(image),Path(scene) if scene else None))
         if image_fingerprint(dataset)!=metadata['fingerprint']:raise ValueError('Cell contours belong to different image pixels.')

@@ -14,5 +14,26 @@
       "best.weights.h5": "5ce81cb5baa9bc7c3db98c4539ebf8b816bed978460919f9d3b469faa2a24b95",
       "signal-model.json": "5453616c8bbda59a8760e14172f3df242f0429992367fa5d367ff8d546fa7bca"
     }
+  },
+  "refinement-base": {
+    "source": "/home/rokoel/Documents/cell-nn/artifacts/refinement-fish/selected-model",
+    "sha256": {
+      "best.weights.h5": "168e9b71547c28788dca193a7f091798a55dbf2b4f7047805dee2eb4485a9cb1",
+      "refinement-model.json": "6d1e8333967deadd88f5d8319cc43230a186892e88ef6c227a05bf8ef4841cbf"
+    }
+  },
+  "refinement": {
+    "source": "/home/rokoel/Documents/cell-nn/artifacts/proposal-fish/selected-crop-model",
+    "sha256": {
+      "best.weights.h5": "2cf468428108f754c6822c118c0dada9cf0e59fe4a07385a03b510dbcd074419",
+      "refinement-model.json": "05e73d18da31bcc4e1401199e4f6fe444b4c3d7fa3786e7d2331d2084304111d"
+    }
+  },
+  "proposals": {
+    "source": "/home/rokoel/Documents/cell-nn/artifacts/proposal-fish/selected-detector",
+    "sha256": {
+      "best.weights.h5": "2e7efd8d1bcd1c225ddde7ec465cf88724db2aac961173ec2587fcc51881eaf7",
+      "proposal-model.json": "c2036c32e6a587503ddebcf73838cec9361d1839c6dbf004c7680c5a985184de"
+    }
   }
 }

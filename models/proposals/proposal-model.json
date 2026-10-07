@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "engine": "cell-center-box3d",
+  "checkpoint": "best.weights.h5",
+  "config": {
+    "patch_size": 64,
+    "voxel_um": 0.3,
+    "stride": 2,
+    "filters": 4,
+    "epochs": 35,
+    "batch_size": 4,
+    "patience": 7,
+    "learning_rate": 0.0005,
+    "center_sigma_um": 0.65,
+    "box_scale_um": 10.0,
+    "threshold": 0.65,
+    "separation_um": 2.0,
+    "box_margin_um": 2.0,
+    "seed": 43
+  },
+  "supervision": "Center loss only inside complete marked cells; unmarked cells and all regions outside manual target masks are ignored. Box loss only near marked centers. No shape filtering; no test crops; no synthetic or source background negatives.",
+  "samples": {
+    "training_cells": 1493,
+    "validation_cells": 574,
+    "background_crops": 0
+  },
+  "parameters": 20691,
+  "architecture": "Two-level tiny 3D encoder/decoder; heatmap + six positive box-face distances; output stride 2.",
+  "audit_sha256": "788e26b04a99c0c288cc8827387b1d15f6a79e7cae8a56c4e2a8f4a6cd842487",
+  "runtime": {
+    "device": "GPU",
+    "devices": [
+      "PhysicalDevice(name='/physical_device:GPU:0', device_type='GPU')"
+    ],
+    "versions": {
+      "stardist": "0.9.2",
+      "tensorflow": "2.21.0",
+      "keras": "3.15.1",
+      "numpy": "2.5.3",
+      "scipy": "1.18.1"
+    }
+  },
+  "best_epoch": 26,
+  "validation_loss": 0.8018233819705683,
+  "checkpoint_sha256": "2e7efd8d1bcd1c225ddde7ec465cf88724db2aac961173ec2587fcc51881eaf7",
+  "training_report": "/home/rokoel/Documents/cell-nn/artifacts/proposal-fish/training/proposal-train-20261007-053239-049069-nzw92kv0/report.json",
+  "center_calibration": {
+    "status": "complete",
+    "split": "validation",
+    "scans": 73,
+    "selected_threshold": 0.65,
+    "summaries": [
+      {
+        "threshold": 0.25,
+        "manual_complete_cells": 574,
+        "matched_center_cells": 462,
+        "annotated_cell_center_recall": 0.8048780487804879,
+        "center_mae_um": 0.5822492181784326,
+        "center_median_error_um": 0.5289281632082993,
+        "padded_box_coverage_ge_095": 454,
+        "duplicate_centers_in_matched_cells": 0,
+        "proposed_centers": 17744
+      },
+      {
+        "threshold": 0.35,
+        "manual_complete_cells": 574,
+        "matched_center_cells": 462,
+        "annotated_cell_center_recall": 0.8048780487804879,
+        "center_mae_um": 0.5822492181784326,
+        "center_median_error_um": 0.5289281632082993,
+        "padded_box_coverage_ge_095": 454,
+        "duplicate_centers_in_matched_cells": 0,
+        "proposed_centers": 17138
+      },
+      {
+        "threshold": 0.45,
+        "manual_complete_cells": 574,
+        "matched_center_cells": 462,
+        "annotated_cell_center_recall": 0.8048780487804879,
+        "center_mae_um": 0.5822492181784326,
+        "center_median_error_um": 0.5289281632082993,
+        "padded_box_coverage_ge_095": 454,
+        "duplicate_centers_in_matched_cells": 0,
+        "proposed_centers": 15660
+      },
+      {
+        "threshold": 0.5,
+        "manual_complete_cells": 574,
+        "matched_center_cells": 462,
+        "annotated_cell_center_recall": 0.8048780487804879,
+        "center_mae_um": 0.5822492181784326,
+        "center_median_error_um": 0.5289281632082993,
+        "padded_box_coverage_ge_095": 454,
+        "duplicate_centers_in_matched_cells": 0,
+        "proposed_centers": 14159
+      },
+      {
+        "threshold": 0.55,
+        "manual_complete_cells": 574,
+        "matched_center_cells": 462,
+        "annotated_cell_center_recall": 0.8048780487804879,
+        "center_mae_um": 0.5822492181784326,
+        "center_median_error_um": 0.5289281632082993,
+        "padded_box_coverage_ge_095": 454,
+        "duplicate_centers_in_matched_cells": 0,
+        "proposed_centers": 12156
+      },
+      {
+        "threshold": 0.6,
+        "manual_complete_cells": 574,
+        "matched_center_cells": 455,
+        "annotated_cell_center_recall": 0.7926829268292683,
+        "center_mae_um": 0.5724387866849429,
+        "center_median_error_um": 0.5211158862296451,
+        "padded_box_coverage_ge_095": 447,
+        "duplicate_centers_in_matched_cells": 0,
+        "proposed_centers": 10088
+      },
+      {
+        "threshold": 0.65,
+        "manual_complete_cells": 574,
+        "matched_center_cells": 439,
+        "annotated_cell_center_recall": 0.764808362369338,
+        "center_mae_um": 0.5561171337792955,
+        "center_median_error_um": 0.514155347700267,
+        "padded_box_coverage_ge_095": 434,
+        "duplicate_centers_in_matched_cells": 0,
+        "proposed_centers": 8308
+      },
+      {
+        "threshold": 0.7,
+        "manual_complete_cells": 574,
+        "matched_center_cells": 404,
+        "annotated_cell_center_recall": 0.7038327526132404,
+        "center_mae_um": 0.5346023056141145,
+        "center_median_error_um": 0.5023444352759108,
+        "padded_box_coverage_ge_095": 401,
+        "duplicate_centers_in_matched_cells": 0,
+        "proposed_centers": 6776
+      },
+      {
+        "threshold": 0.75,
+        "manual_complete_cells": 574,
+        "matched_center_cells": 309,
+        "annotated_cell_center_recall": 0.5383275261324042,
+        "center_mae_um": 0.4996701292551832,
+        "center_median_error_um": 0.48286779314117956,
+        "padded_box_coverage_ge_095": 307,
+        "duplicate_centers_in_matched_cells": 0,
+        "proposed_centers": 5151
+      },
+      {
+        "threshold": 0.8,
+        "manual_complete_cells": 574,
+        "matched_center_cells": 124,
+        "annotated_cell_center_recall": 0.21602787456445993,
+        "center_mae_um": 0.43891608744841554,
+        "center_median_error_um": 0.42091409332485274,
+        "padded_box_coverage_ge_095": 123,
+        "duplicate_centers_in_matched_cells": 0,
+        "proposed_centers": 2650
+      }
+    ],
+    "checkpoint_sha256": "2e7efd8d1bcd1c225ddde7ec465cf88724db2aac961173ec2587fcc51881eaf7",
+    "policy": "Center must lie inside a complete manual cell and within 2 \u00b5m of its EDT interior seed. One-to-one per manual cell. Padded AABB coverage compares physical box extents. Unknown/unmarked cells are unscorable, not false positives. Validation selects highest confidence retaining >=95% of maximum matched marked centers. No test-based selection."
+  },
+  "channel_selection": {
+    "min_diameter_um": 2.5,
+    "max_diameter_um": 32
+  },
+  "selection_status": "Frozen; thresholds selected from validation only, before new test inference."
+}

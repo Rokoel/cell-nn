@@ -12,7 +12,7 @@ from ..models import LibraryEntry, Scene
 from ..reader import entry_for_path, load_dataset, scan_library
 from ..signals.overlays import read_signals
 from ..views import SliceView, VolumeView
-from .controller import AnalysisController, default_models, STAGES
+from .controller import AnalysisController, default_models, default_refinement_model, default_proposal_model, STAGES
 
 
 class AnalysisWindow(QtWidgets.QMainWindow):
@@ -102,13 +102,16 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.options = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(self.options)
         cells, signals = default_models()
-        self.cell_model = QtWidgets.QLineEdit(self.settings.value('cell_model', str(cells)))
+        self.cell_model = QtWidgets.QLineEdit(self.settings.value('cell_model', default_proposal_model() or str(cells)))
+        self.cell_model.setToolTip('Choose a StarDist model or a center-and-box detector folder. The latter also requires a Boundaries model.')
         self.signal_model = QtWidgets.QLineEdit(self.settings.value('signal_model', str(signals)))
-        if not (Path(self.cell_model.text()) / 'fish-model.json').is_file():
+        self.boundary_model = QtWidgets.QLineEdit(self.settings.value('boundary_model', default_refinement_model()))
+        self.boundary_model.setPlaceholderText('Optional 3D U-Net model folder')
+        if not any((Path(self.cell_model.text()) / name).is_file() for name in ('fish-model.json', 'proposal-model.json')):
             self.cell_model.setText(str(cells))
         if not (Path(self.signal_model.text()) / 'signal-model.json').is_file():
             self.signal_model.setText(str(signals))
-        for title, field in [('Cells', self.cell_model), ('Signals', self.signal_model)]:
+        for title, field in [('Cells', self.cell_model), ('Boundaries', self.boundary_model), ('Signals', self.signal_model)]:
             row = QtWidgets.QHBoxLayout()
             row.addWidget(field, 1)
             self._button('…', lambda checked=False, field=field: self.choose_folder(field), row)
@@ -117,6 +120,17 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.device.addItems(['auto', 'cpu', 'gpu'])
         self.device.setCurrentText(self.settings.value('device', 'auto'))
         form.addRow('Device', self.device)
+        self.boundary_training_button = QtWidgets.QPushButton('Train boundary model…')
+        self.boundary_training_button.clicked.connect(self.train_boundaries)
+        form.addRow(self.boundary_training_button)
+        self.proposal_training_button = QtWidgets.QPushButton('Train center and box model…')
+        self.proposal_training_button.clicked.connect(self.train_proposals)
+        form.addRow(self.proposal_training_button)
+        self.bundled_cells_button = QtWidgets.QPushButton('Use bundled center and crop models')
+        self.bundled_cells_button.setEnabled(bool(default_proposal_model() and default_refinement_model()))
+        self.bundled_cells_button.clicked.connect(lambda: (
+            self.cell_model.setText(default_proposal_model()), self.boundary_model.setText(default_refinement_model())))
+        form.addRow(self.bundled_cells_button)
         left.addWidget(self.options)
         self.options.hide()
         self.options_button.toggled.connect(lambda visible: (
@@ -408,7 +422,8 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.timer.start()
         self.overall.setRange(0, self.total_scans*5000)
         self.overall.setValue(0)
-        for key, widget in [('output', self.output), ('cell_model', self.cell_model), ('signal_model', self.signal_model)]:
+        for key, widget in [('output', self.output), ('cell_model', self.cell_model),
+                            ('boundary_model', self.boundary_model), ('signal_model', self.signal_model)]:
             self.settings.setValue(key, widget.text())
         self.settings.setValue('device', self.device.currentText())
         self.sync_buttons()
@@ -430,22 +445,38 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         item.setText('Processing · ' + Path(self.active_image).name)
         try:
             self.controller.start(self.active_image, self.output.text(), self.cell_model.text(),
-                                  self.signal_model.text(), self.device.currentText())
+                                  self.signal_model.text(), self.device.currentText(), self.boundary_model.text().strip() or None)
         except Exception as exc:
             self.failed(str(exc))
 
     def processing_progress(self, event):
         stage = event['stage']
+        stages = event.get('stages', 5)
         total, current = event.get('total', 0), event.get('current', 0)
-        self.phase.setText(f'{stage} / 5 · {STAGES[stage-1][1]}\n{event["phase"]}')
-        self.overall.setFormat(f'Scan {self.scan_number} / {self.total_scans} · Step {stage} / 5')
+        name = event.get('stage_name', STAGES[min(stage-1,len(STAGES)-1)][1])
+        self.phase.setText(f'{stage} / {stages} · {name}\n{event["phase"]}')
+        self.overall.setFormat(f'Scan {self.scan_number} / {self.total_scans} · Step {stage} / {stages}')
         fraction = min(1., max(0., current/total)) if total > 0 else 0.
-        self.overall.setValue((self.scan_number-1)*5000 + (stage-1)*1000 + int(fraction*1000))
+        self.overall.setValue((self.scan_number-1)*5000 + round((stage-1+fraction)/stages*5000))
         self.stage_progress.setRange(0, 1000 if total > 0 else 0)
         if total > 0:
             self.stage_progress.setValue(round(fraction*1000))
             self.stage_progress.setFormat(f'{current} / {total}')
         self.statusBar().showMessage(f'{Path(self.active_image).name} · {event["phase"]}')
+
+    def train_boundaries(self):
+        from ..refinement.gui import TrainingDialog
+        dialog = TrainingDialog(self, self.output.text(), self.device.currentText())
+        dialog.model_ready.connect(self.boundary_model.setText)
+        dialog.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.show()
+
+    def train_proposals(self):
+        from ..refinement.gui import TrainingDialog
+        dialog = TrainingDialog(self, self.output.text(), self.device.currentText(), kind='proposals')
+        dialog.model_ready.connect(self.cell_model.setText)
+        dialog.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.show()
 
     def completed(self, report):
         item = self.scans.item(self.active_row)

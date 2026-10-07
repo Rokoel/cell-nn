@@ -17,6 +17,8 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--image', default='artifacts/imaris-compatibility/other-scans/170612_HAG50-2_Lam633m_K9546a_unannotated.ims')
 parser.add_argument('--device', default='auto', choices=['auto', 'cpu', 'gpu'])
 parser.add_argument('--package-root', type=Path, help='Verify the distributed source/model bundle')
+parser.add_argument('--boundary-model', type=Path, help='Exercise the optional seeded 3D U-Net stage')
+parser.add_argument('--cell-model', type=Path, help='Select StarDist or the center-and-box detector')
 args = parser.parse_args()
 if args.package_root:
     sys.path.insert(0, str(args.package_root.resolve()))
@@ -39,7 +41,7 @@ last_progress = None
 
 def progress(event):
     global last_progress
-    text = f'{event["stage"]}/5 {event["phase"]} {event.get("current", 0)}/{event.get("total", 0)}'
+    text = f'{event["stage"]}/{event.get("stages", 5)} {event["phase"]} {event.get("current", 0)}/{event.get("total", 0)}'
     if text != last_progress:
         print(text, flush=True)
         last_progress = text
@@ -68,6 +70,10 @@ def exercise():
         original_hash = digest(args.image)
         window.output.setText(str((output / 'runs').resolve()))
         window.device.setCurrentText(args.device)
+        if args.boundary_model:
+            window.boundary_model.setText(str(args.boundary_model.resolve()))
+        if args.cell_model:
+            window.cell_model.setText(str(args.cell_model.resolve()))
         if args.package_root:
             assert Path(window.cell_model.text()).is_relative_to(args.package_root.resolve())
             assert Path(window.signal_model.text()).is_relative_to(args.package_root.resolve())
@@ -79,6 +85,10 @@ def exercise():
         wait(lambda: not window.running and not window.loading)
         assert window.result_path
         report = window.result_report
+        if window.boundary_model.text():
+            assert report['boundary_refinement']['cells'], 'Missing boundary diagnostics'
+            stages=json.loads(window.result_path.read_text())['stages']
+            assert 'refine' in stages or report.get('cell_detector',{}).get('engine')=='cell-center-box3d'
         assert report['points'], 'Smoke scan must exercise real A/B measurements'
         assert window.distances.rowCount() == len(report['points'])
         assert sum(row['count'] for row in report['counts']) == len(report['points'])
@@ -91,6 +101,8 @@ def exercise():
         workbook = load_workbook(workbook_path, data_only=True)
         assert workbook['Signals'].max_row-1 == len(report['points'])
         assert workbook['Cells'].max_row-1 == len(report['cell_volumes'])
+        if window.boundary_model.text():
+            assert 'Boundary refinement' in [c.value for c in workbook['Cells'][1]]
         assert np.isclose(workbook['Signals']['M2'].value, report['points'][0]['distance_um'], atol=1e-14, rtol=1e-14)
         workbook.close()
         assert digest(window.dataset.metadata.path) == original_hash == digest(args.image)
@@ -121,6 +133,7 @@ def exercise():
         summary = dict(status='passed', analysis_report=str(window.result_path),
                        package_root=str(args.package_root.resolve()) if args.package_root else None,
                        device=args.device,
+                       boundary_model=window.boundary_model.text() or None,
                        cells=len(report['signal_filter']['kept_cell_ids']), signals=len(report['points']),
                        excel=str(workbook_path), volumes_um3=[r['volume_um3'] for r in report['cell_volumes']],
                        distance_range_um=[min(p['distance_um'] for p in report['points']), max(p['distance_um'] for p in report['points'])],

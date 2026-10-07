@@ -56,13 +56,24 @@ jobs:
       - name: Test readers, geometry, export and Excel
         run: python -m pytest -q -m "not neural and not gui and not integration"
       - name: Verify bundled models on CPU
-        run: python scripts/verify_release.py
+        run: python scripts/verify_release.py --require-latest-models
+      - name: Check sparse detector loss on CPU
+        run: python -m pytest -q tests/test_proposals.py -m neural
       - name: Build source and model bundle
         env:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
           RELEASE_PLATFORM: ${{ matrix.platform }}
         shell: bash
         run: python scripts/package_analysis.py --output "dist/FISH-Analysis-${RELEASE_TAG}-${RELEASE_PLATFORM}"
+      - name: Verify packaged models on CPU
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          RELEASE_PLATFORM: ${{ matrix.platform }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "dist/FISH-Analysis-${RELEASE_TAG}-${RELEASE_PLATFORM}"
+          python scripts/verify_release.py --require-latest-models
       - uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.platform }}
@@ -94,6 +105,8 @@ jobs:
           set -euo pipefail
           (cd release-assets && sha256sum *.zip > SHA256SUMS.txt)
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --title "FISH Analysis $RELEASE_TAG" \
+              --notes-file docs/release-notes.md
             gh release upload "$RELEASE_TAG" release-assets/* --clobber
           else
             gh release create "$RELEASE_TAG" release-assets/* --verify-tag \

@@ -30,8 +30,22 @@ def default_models():
     return cells, signals
 
 
+def default_refinement_model():
+    path = Path(__file__).resolve().parents[2] / 'models/refinement'
+    return str(path) if (path / 'refinement-model.json').is_file() else ''
+
+
+def default_proposal_model():
+    path = Path(__file__).resolve().parents[2] / 'models/proposals'
+    return str(path) if (path / 'proposal-model.json').is_file() else ''
+
+
 def check_models(cells, signals):
-    manifest = read_model(cells)
+    if (Path(cells) / 'proposal-model.json').is_file():
+        from ..proposals.config import read_model as read_proposal_model
+        manifest = read_proposal_model(cells)
+    else:
+        manifest = read_model(cells)
     info = json.loads((Path(signals) / 'signal-model.json').read_text(encoding='utf-8'))
     if info.get('engine') != 'signal-cnn3d' or info.get('version') != 1:
         raise ValueError('Choose a trained FISH signal model folder.')
@@ -55,10 +69,22 @@ class AnalysisController(QtCore.QObject):
         self.stopping = False
         self.closing = False
 
-    def start(self, image, output, cells, signals, device='auto'):
+    def start(self, image, output, cells, signals, device='auto', refinement=None):
         if self.busy:
             raise ValueError('A scan is already being processed.')
         manifest = check_models(cells, signals)
+        self.refinement_model = str(Path(refinement).expanduser().resolve()) if refinement else None
+        self.center_box_detector = manifest.get('engine') == 'cell-center-box3d'
+        if self.center_box_detector and not self.refinement_model:
+            raise ValueError('The center-and-box detector requires a Boundaries model to draw crop contours.')
+        self.stages = list(STAGES)
+        if self.refinement_model:
+            from ..refinement.config import read_model as read_refinement_model
+            read_refinement_model(self.refinement_model)
+            if not self.center_box_detector:
+                self.stages.insert(1, ('refine', 'Refining cell boundaries'))
+            else:
+                self.stages[0] = ('cells', 'Finding cell centers and drawing crop contours')
         self.image = Path(image).expanduser().resolve()
         if not self.image.is_file():
             raise FileNotFoundError(self.image)
@@ -73,7 +99,17 @@ class AnalysisController(QtCore.QObject):
         self.state = dict(version=1, engine='fish-analysis', status='running', source=str(self.image),
                           cell_model=str(Path(cells).resolve()), signal_model=self.signal_model, device=device,
                           processed_time=0, stages={})
+        self.state['refinement_model'] = self.refinement_model
+        self.state['cell_detector_engine'] = manifest.get('engine', 'stardist3d')
         self._persist()
+        if self.center_box_detector:
+            self.busy = True
+            self.busy_changed.emit(True)
+            self._launch(0, ['-m', 'fish_viewer.proposals', '--mode', 'apply',
+                '--image', str(self.image), '--model', str(Path(cells).resolve()),
+                '--boundary-model', self.refinement_model, '--output', str(self.directory / 'work'),
+                '--device', self.device, '--cancel-file', str(self.cancel_file)])
+            return
         config = replace(evidence_preset(NeuralConfig.from_dict(manifest['config'])), device=device)
         request = dict(config=asdict(config), mode='apply', model=str(Path(cells).resolve()),
                        output=str(self.directory / 'work'), cancel_file=str(self.cancel_file),
@@ -92,11 +128,12 @@ class AnalysisController(QtCore.QObject):
 
     def _launch(self, index, arguments):
         self.stage_index = index
-        self.stage = STAGES[index][0]
+        self.stage = self.stages[index][0]
         self.buffer, self.errors, self.finished_report = b'', '', None
         self.state['current_stage'] = self.stage
         self._persist()
-        self.progress.emit(dict(stage=index+1, stages=5, phase=STAGES[index][1], current=0, total=0))
+        self.progress.emit(dict(stage=index+1, stages=len(self.stages), stage_name=self.stages[index][1],
+                                phase=self.stages[index][1], current=0, total=0))
         process = QtCore.QProcess(self)
         self.job = process
         environment = QtCore.QProcessEnvironment.systemEnvironment()
@@ -126,8 +163,9 @@ class AnalysisController(QtCore.QObject):
                 self.finished_report = event['report']
             elif event.get('kind') in ('progress', 'tile', 'file', 'stage', 'warning'):
                 phase = event.get('phase') or event.get('message') or (
-                    'Predicting image tiles' if event['kind'] == 'tile' else STAGES[self.stage_index][1])
-                self.progress.emit(dict(stage=self.stage_index+1, stages=5, phase=phase,
+                    'Predicting image tiles' if event['kind'] == 'tile' else self.stages[self.stage_index][1])
+                self.progress.emit(dict(stage=self.stage_index+1, stages=len(self.stages), phase=phase,
+                                        stage_name=self.stages[self.stage_index][1],
                                         current=event.get('current', 0), total=event.get('total', 0)))
 
     def _read_errors(self):
@@ -162,14 +200,22 @@ class AnalysisController(QtCore.QObject):
             return
         try:
             self.state['stages'][self.stage] = report.get('directory', report.get('image'))
-            if self.stage == 'cells':
+            if self.stage in ('cells', 'refine'):
                 if len(report.get('files', [])) != 1 or report.get('failures'):
                     raise ValueError('Cell detection did not produce a complete scan result.')
+                if self.stage == 'cells' and self.refinement_model and not self.center_box_detector:
+                    self._launch(1, ['-m', 'fish_viewer.refinement', '--mode', 'apply',
+                        '--cells-report', str(Path(report['directory']) / 'report.json'),
+                        '--model', self.refinement_model, '--output', str(self.directory / 'work'),
+                        '--device', self.device, '--cancel-file', str(self.cancel_file)])
+                    return
+                if self.stage == 'refine':
+                    self.state['refinement_summary'] = report['summary']
                 args = ['-m', 'fish_viewer.signals', '--mode', 'apply', '--image', str(self.image),
                         '--cell-predictions', report['files'][0]['predictions'], '--model', self.signal_model,
                         '--output', str(self.directory / 'work'), '--device', self.device,
                         '--cancel-file', str(self.cancel_file)]
-                self._launch(1, args)
+                self._launch(next(i for i,s in enumerate(self.stages) if s[0]=='signals'), args)
             elif self.stage in ('signals', 'filter'):
                 operation = 'filter' if self.stage == 'signals' else 'measure'
                 self._launch(self.stage_index+1, ['-m', 'fish_viewer.workflow', operation,
@@ -178,7 +224,7 @@ class AnalysisController(QtCore.QObject):
             elif self.stage == 'measure':
                 self.state['signal_report'] = str((Path(report['directory']) / 'report.json').relative_to(self.directory))
                 target = self.directory / 'export' / (self.image.stem + '_measured.ims')
-                self._launch(4, ['-m', 'fish_viewer.workflow', 'export', '--report', str(Path(report['directory']) / 'report.json'),
+                self._launch(len(self.stages)-1, ['-m', 'fish_viewer.workflow', 'export', '--report', str(Path(report['directory']) / 'report.json'),
                     '--output', str(target), '--cancel-file', str(self.cancel_file)])
             else:
                 self.state.update(status='complete', cells=report['cells'], signals=report['signals'],

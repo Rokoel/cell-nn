@@ -15,6 +15,8 @@ def write_excel(path, report):
     workbook.remove(workbook.active)
     volumes = {r['cell_id']: r for r in report.get('cell_volumes', [])}
     totals = Counter(p['cell_id'] for p in report['points'])
+    refinement = report.get('boundary_refinement', {})
+    refinements = {r['cell_id']: r for r in refinement.get('cells', [])}
     def sheet(name, headers, rows):
         page = workbook.create_sheet(name)
         page.append(headers)
@@ -31,9 +33,13 @@ def write_excel(path, report):
             cell.fill = PatternFill('solid', fgColor='205E58')
         for col in page.columns:
             page.column_dimensions[col[0].column_letter].width = min(60, max(16, len(str(col[0].value))+2))
-    sheet('Cells', ['Cell', 'Volume (um^3)', 'Voxel volume (um^3)', 'Signals (all channels)', 'Volume status', 'Cell at image edge'],
+    extra_headers = ['Boundary refinement', 'Refinement fallback reason'] if refinement else []
+    sheet('Cells', ['Cell', 'Volume (um^3)', 'Voxel volume (um^3)', 'Signals (all channels)', 'Volume status', 'Cell at image edge']+extra_headers,
           [[cell, volumes.get(cell, {}).get('volume_um3'), volumes.get(cell, {}).get('voxel_volume_um3'), totals[cell],
             volumes.get(cell, {}).get('volume_status', 'unavailable'), volumes.get(cell, {}).get('cell_at_image_edge')]
+            + ([('crop contour' if report.get('cell_detector',{}).get('engine')=='cell-center-box3d' else 'refined')
+                if refinements.get(cell, {}).get('accepted') else 'detector contour retained',
+                refinements.get(cell, {}).get('fallback_reason')] if refinement else [])
            for cell in sorted(set(volumes) | set(totals))])
     sheet('Signals', ['Signal', 'Cell', 'Channel (1-based)', 'Channel name', 'Score', 'Cell volume (um^3)',
                      'A x (um)', 'A y (um)', 'A z (um)', 'B x (um)', 'B y (um)', 'B z (um)', 'Distance (um)', 'Border at image edge'],
@@ -48,6 +54,8 @@ def write_excel(path, report):
         ['Signal model', str(report.get('model_directory', ''))], ['Cells', len(set(totals) | set(volumes))],
         ['Signals', len(report['points'])], ['Volume definition', report.get('volume_method', 'unavailable')],
         ['Distance definition', report.get('measurement', {}).get('method', 'not measured')],
+        ['Boundary model', str(refinement.get('model', 'none'))],
+        ['Cell detector', str(report.get('cell_detector', {}).get('engine', 'StarDist'))],
         ['Cell retention', 'At least one accepted signal in any non-membrane channel'],
         ['Units', 'Coordinates and distances: um; volumes: um^3']])
     fd, temporary = tempfile.mkstemp(suffix='.xlsx', prefix='.fish-', dir=path.parent)

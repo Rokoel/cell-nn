@@ -1,8 +1,9 @@
 # FISH Analysis
 
 A separate desktop app for the final processing pipeline. It reuses the viewer's
-readers, 2D/3D rendering, balanced cell model, signal model, and Imaris exporter.
-There are no training panels or preprocessing tuning tabs in this app.
+readers, 2D/3D rendering, trained cell and signal models, and Imaris exporter.
+The main view stays focused on analysis; optional center/box and boundary-model
+training opens in separate windows under **Models and device**.
 
 ## Start
 
@@ -12,7 +13,11 @@ On Windows, use `run-analysis.bat` after setup. You can also run
 Optional command-line arguments add scans or folders when the app opens.
 
 For another computer, extract the **FISH-Analysis.zip** bundle. It includes the
-application source, native Imaris scene template, and both trained checkpoints.
+application source, native Imaris scene template, the latest center/box detector
+and crop U-Net, and the existing signal network. The previous StarDist and
+boundary checkpoints are preserved for comparison. Both app launchers are
+included: use `run-analysis` for the complete automatic workflow, or `run-viewer`
+for image exploration and the older classical/StarDist training panels.
 The original FISH dataset and training artifacts are not needed.
 
 1. Install 64-bit Python 3.12. On Windows, also install the Microsoft Visual C++
@@ -51,15 +56,26 @@ visible membrane evidence is still required. Signals whose centers lie inside
 the predicted cell are eligible, including near-border signals. Processing uses
 time point 1; the exported image preserves all original time points and channels.
 
+With a StarDist cell model, an optional **Boundaries** model adds 3D U-Net
+refinement between cell detection and signal detection. It predicts detailed
+voxel masks without a radial shape constraint, and shows per-cell progress.
+Leave the boundary field empty to use the original StarDist contours; the new
+center/box detector requires a boundary model. See [boundary refinement](boundary-refinement.md) for
+training, safeguards and saved acceptance/fallback information.
+
 Every non-membrane channel is searched separately, including scans with two signal
 channels. A cell survives when **any** of those channels has at least one accepted
 signal. All accepted signals across those channels are retained and counted
 separately; a cell does not need a signal in every channel.
 
 Model folders and CPU/auto/GPU selection are under **Models and device**.
-The portable bundle defaults to `models/cells` and `models/signals`. In the main
-workspace it uses the completed balanced September 18 cell checkpoint and
-September 19 signal checkpoint. No retraining takes place.
+The original checkpoints are `models/cells` (StarDist) and `models/signals`.
+The alternative center-and-box detector goes in **Cells** (`models/proposals`)
+and requires the crop U-Net in **Boundaries** (`models/refinement`). Its failed
+crops are rejected without a guessed contour. New installations discover this
+pair when bundled; saved model choices are retained. See
+[the two-network cell pipeline](center-box-contours.md) for training labels and
+validation. Analyzing scans does not retrain these models.
 
 Switch between **2D layers** and **3D volume**. Scroll to change slices; Ctrl-scroll
 zooms the 2D image. **Channels…** contains channel visibility, color, brightness,
@@ -135,15 +151,16 @@ distance minus computed shortest distance was 0.00160 µm and 0.000554 µm;
 median manual B-to-mesh residuals were 0.000249 µm and 0.000275 µm. This checks
 the interpretation of the manual method, not neural segmentation accuracy.
 
-The real Linux desktop smoke test uses both trained models and verifies every
+The real Linux desktop smoke test runs the chosen cell and signal models and verifies every
 exported B lies on its own cell and has the shortest A–B distance. It also checks
 tables, image byte preservation, 2D/3D overlays and line visibility. The test is
 `scripts/smoke_analysis.py`; results and screenshots are under `artifacts/analysis-smoke`.
-The full suite passed 99 tests. A real scan completed all five steps on the Linux
-GPU and again on CPU using the packaged source and model copies; both produced
-6 retained cells and 6 signals with identical distances (0.1118–1.4360 µm).
-Native Windows execution and opening in Imaris itself have not been tested in
-this Linux environment. The exporter retains the FISH Imaris 6.3.1 XML profile.
+The latest full suite passed 119 tests. A real scan completed all five steps
+using the center/box detector, crop U-Net and existing signal CNN, with 7 retained
+cells and 7 signals. All bundled models passed CPU loading and inference.
+Native Windows desktop execution and opening in Imaris itself have not been
+tested locally. The release workflow separately verifies Windows CPU inference.
+The exporter retains the FISH Imaris 6.3.1 XML profile.
 
 To rebuild the source/model bundle, run
 `.venv/bin/python scripts/package_analysis.py --output artifacts/FISH-Analysis-new`.

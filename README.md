@@ -6,6 +6,14 @@ detects cells and signals, removes cells without signals, measures A–B distanc
 to each cell border, and saves Imaris files and CSVs automatically. See the
 [FISH Analysis guide](docs/fish-analysis.md) for setup, controls, models and output files.
 
+The latest cell pipeline uses a **tiny 3D center/box detector → cropped 3D U-Net**
+with the existing signal network. Choose **Models and device → Use bundled center
+and crop models** in Analysis. On 71 test scans it matched 314/508 complete manual
+cells (61.8%); retained matched cells had 6.98% volume MAPE and matched signals
+had 0.138 µm distance MAE. See [the evaluation report](reports/center-box-contours/README.md)
+for matching rules, paired comparisons and limitations. Linux/Windows releases
+include both apps, the latest models, and previous checkpoints for comparison.
+
 A Python desktop viewer with classical and neural 3D cell contour pipelines for Imaris microscopy stacks. Uses **PySide6 + PyVista/VTK** on Linux and Windows. Images and original annotations are opened read-only.
 
 For automatic contours, open **Contour pipeline…** in the viewer toolbar. The reference folder is selected by default when present. The panel provides automatic channel selection, 3D shape filtering, parameter tuning, live graphs, and prediction overlays. See the [pipeline guide](docs/contour-pipeline.md) for instructions, score definitions, and measured limitations.
