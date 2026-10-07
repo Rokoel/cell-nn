@@ -1,6 +1,5 @@
 """Train a compact 3D candidate classifier; predict only inside neural cells."""
 from dataclasses import asdict,replace
-from datetime import datetime
 import csv
 import hashlib
 import json
@@ -12,6 +11,7 @@ import numpy as np
 
 from ..models import LibraryEntry
 from ..reader import load_dataset
+from ..run_paths import new_run_directory
 from ..neural.engine import runtime
 from ..pipeline.runner import _json
 from ..pipeline.segmentation import checkpoint,Cancelled
@@ -93,7 +93,7 @@ def train(audit_path,output,config,emit=lambda event:None,cancel=None):
     # Sampling and matching parameters belong to the audit, not to an unrelated UI default.
     base=SignalConfig(**audit['config'])
     config=replace(base,**{key:getattr(config,key) for key in ('epochs','steps_per_epoch','batch_size','patience','learning_rate','device','seed')}).validate()
-    directory=Path(output).resolve()/f'signal-train-{datetime.now():%Y%m%d-%H%M%S-%f}';directory.mkdir(parents=True)
+    directory=new_run_directory(output, 'signal-train')
     model_dir=directory/'model';model_dir.mkdir()
     started=time.monotonic()
     last_progress_write=0.
@@ -191,7 +191,7 @@ def image_fingerprint(dataset):
 
 
 def apply(image,scene,cell_predictions,model_directory,output,device='auto',emit=lambda event:None,cancel=None):
-    directory=Path(output).resolve()/f'signal-apply-{datetime.now():%Y%m%d-%H%M%S-%f}';directory.mkdir(parents=True)
+    directory=new_run_directory(output, 'signal-apply')
     report=dict(version=1,engine='signal-cnn3d',mode='apply',status='running',directory=str(directory),image=str(Path(image).resolve()),
         scene=str(scene) if scene else None,cell_predictions=str(Path(cell_predictions).resolve()),model_directory=str(Path(model_directory).resolve()),
         channel_index_base=0,unit='µm',time=0,points=[],counts=[])

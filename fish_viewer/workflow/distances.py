@@ -1,5 +1,4 @@
 """Signal A to closest point B on its assigned cell's calibrated triangle mesh."""
-from datetime import datetime
 import hashlib
 import json
 from pathlib import Path
@@ -12,6 +11,7 @@ from vtkmodules.vtkCommonDataModel import vtkCellArray, vtkPolyData, vtkStaticCe
 
 from ..pipeline.runner import read_prediction, _json
 from ..pipeline.segmentation import checkpoint
+from ..run_paths import new_run_directory
 from .results import validated_result, write_tables
 
 
@@ -112,8 +112,7 @@ def measure_result(path, output, emit=lambda event: None, cancel=None):
     points = measure_points(report, surfaces, metadata, emit, cancel)
     from .volumes import add_cell_volumes
     add_cell_volumes(report, surfaces, labels, cell_metadata['spacing_zyx'])
-    directory = Path(output).resolve() / f'measured-scan-{datetime.now():%Y%m%d-%H%M%S-%f}'
-    directory.mkdir(parents=True)
+    directory = new_run_directory(output, 'measured-scan')
     try:
         checkpoint(cancel)
         # Keep this result independently usable if intermediate stages are moved.

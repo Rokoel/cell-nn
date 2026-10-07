@@ -8,6 +8,9 @@ Both existing trained neural models are bundled. All non-membrane channels are
 searched independently; cells with at least one accepted signal in any channel
 are retained. Roundness filtering remains disabled.
 
+Run folders are created atomically with unique names, preventing collisions
+when jobs start within the same clock tick on Windows.
+
 Download the ZIP for your operating system, extract it, install 64-bit Python
 3.12, then run `setup-analysis.bat` (Windows) or `bash setup-analysis.sh` (Linux).
 Start with `run-analysis.bat` or `bash run-analysis.sh`. Setup requires internet

@@ -1,6 +1,5 @@
 """Validate and filter saved predictions without changing the source scans."""
 from collections import Counter
-from datetime import datetime
 import csv
 import json
 from pathlib import Path
@@ -12,6 +11,7 @@ from ..models import LibraryEntry
 from ..pipeline.runner import _json
 from ..pipeline.segmentation import checkpoint
 from ..reader import load_dataset
+from ..run_paths import new_run_directory
 from ..signals.data import at_labels
 from ..signals.engine import image_fingerprint
 from ..signals.overlays import read_signals
@@ -111,8 +111,7 @@ def filter_result(path, output, emit=lambda event: None, cancel=None):
         for cell in kept for channel, info in enumerate(report['channels']) if channel != report['membrane_channel']],
         signal_filter=filtering, parent_signal_report=str(Path(path).resolve()),
         unfiltered_cell_predictions=report['cell_predictions'])
-    directory = Path(output).resolve() / f'filtered-scan-{datetime.now():%Y%m%d-%H%M%S-%f}'
-    directory.mkdir(parents=True)
+    directory = new_run_directory(output, 'filtered-scan')
     try:
         checkpoint(cancel)
         np.savez_compressed(directory / 'contours.npz', labels=labels, metadata=np.array(json.dumps(metadata, allow_nan=False)))

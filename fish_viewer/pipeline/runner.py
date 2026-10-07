@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
-from datetime import datetime
 import csv
 import json
 from pathlib import Path
@@ -12,6 +11,7 @@ import numpy as np
 
 from ..models import LibraryEntry
 from ..reader import load_dataset
+from ..run_paths import new_run_directory
 from .config import PipelineConfig
 from .evaluation import aggregate, evaluate, rasterize_reference
 from .segmentation import Cancelled, Prediction, Prepared, checkpoint, prediction_surfaces, prepare, segment
@@ -166,9 +166,7 @@ def run_pipeline(entries, config, output_root, mode='tune', trials=12, holdout=0
         if key not in unique or (entry.scene and not unique[key].scene) or (entry.scene and entry.scene.stem == entry.image.stem):
             unique[key] = entry
     entries = sorted(unique.values(), key=lambda e: str(e.image))
-    stamp = datetime.now().strftime('%Y%m%d-%H%M%S-%f')
-    directory = Path(output_root).resolve() / f'{mode}-{stamp}'
-    directory.mkdir(parents=True, exist_ok=False)
+    directory = new_run_directory(output_root, mode)
     report = dict(version=1, mode=mode, status='running', directory=str(directory), seed=seed,
         initial_config=asdict(config), best_config=None, trials=[], files=[], failures=[], warnings=[], split={},
         metric_notes='Partial references: unmatched predictions are unscored. Missed references have zero Dice/IoU. '

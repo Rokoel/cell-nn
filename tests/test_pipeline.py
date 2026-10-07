@@ -214,7 +214,12 @@ def test_tuning_reserved_scores_only_after_parameter_selection(synthetic, tmp_pa
     assert len(persisted['files']) == 3
 
 
-def test_cancellation_and_file_errors_are_reported(ims_file, tmp_path):
+def test_cancellation_and_file_errors_are_reported(ims_file, tmp_path, monkeypatch):
+    from datetime import datetime
+    from types import SimpleNamespace
+    from fish_viewer import run_paths
+    instant = datetime(2026, 10, 7, 0, 0, 0)
+    monkeypatch.setattr(run_paths, 'datetime', SimpleNamespace(now=lambda: instant))
     event = threading.Event()
     event.set()
     entries = [LibraryEntry(ims_file)]
@@ -223,6 +228,8 @@ def test_cancellation_and_file_errors_are_reported(ims_file, tmp_path):
     assert json.loads((Path(report['directory'])/'report.json').read_text())['status'] == 'cancelled'
     bad = runner.run_pipeline([LibraryEntry(tmp_path/'absent.ims')], PipelineConfig(), tmp_path/'runs', mode='apply')
     assert bad['status'] == 'failed' and len(bad['failures']) == 1
+    assert bad['directory'] != report['directory']
+    assert json.loads((Path(report['directory'])/'report.json').read_text())['status'] == 'cancelled'
     with pytest.raises(Cancelled):
         segment(Prepared(np.zeros((8,)*3), (0.3,)*3, (0,)*3, 0, [], '', {}, {}), PipelineConfig(), cancel=event)
 

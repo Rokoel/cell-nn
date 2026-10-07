@@ -1,6 +1,5 @@
 """StarDist runner. Only this optional worker imports TensorFlow."""
 from dataclasses import asdict, replace
-from datetime import datetime
 import csv
 import importlib.metadata
 from itertools import product
@@ -17,6 +16,7 @@ from skimage.feature import peak_local_max
 from ..pipeline.evaluation import aggregate, evaluate
 from ..pipeline.runner import _json, save_prediction
 from ..pipeline.segmentation import Cancelled, Prediction, checkpoint, mask_properties
+from ..run_paths import new_run_directory
 from .config import NeuralConfig
 from .data import load_cases, three_way_split, training_arrays, subset_metrics, add_synthetic_background
 from .precision import membrane_evidence,evidence_passes
@@ -161,8 +161,7 @@ def run_neural(entries, config, output_root, mode='train', model_directory=None,
     config.validate()
     if not entries or mode not in ('train','apply'):
         raise ValueError('Choose input files and train or apply mode.')
-    directory = Path(output_root).resolve()/f'neural-{mode}-{datetime.now():%Y%m%d-%H%M%S-%f}'
-    directory.mkdir(parents=True)
+    directory = new_run_directory(output_root, f'neural-{mode}')
     os.environ.setdefault('MPLCONFIGDIR', str(directory/'matplotlib-cache'))
     started = time.monotonic()
     report = dict(version=1, engine='stardist3d', directory=str(directory), mode=mode, status='running',
