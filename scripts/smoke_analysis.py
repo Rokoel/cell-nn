@@ -82,6 +82,17 @@ def exercise():
         assert report['points'], 'Smoke scan must exercise real A/B measurements'
         assert window.distances.rowCount() == len(report['points'])
         assert sum(row['count'] for row in report['counts']) == len(report['points'])
+        assert window.excel_button.isEnabled()
+        assert len(report['cell_volumes']) == len(report['signal_filter']['kept_cell_ids'])
+        assert all(row['volume_um3'] > 0 for row in report['cell_volumes'])
+        from openpyxl import load_workbook
+        exported = json.loads(window.result_path.read_text())
+        workbook_path = next(window.result_path.parent / p for p in exported['files'] if p.endswith('.xlsx'))
+        workbook = load_workbook(workbook_path, data_only=True)
+        assert workbook['Signals'].max_row-1 == len(report['points'])
+        assert workbook['Cells'].max_row-1 == len(report['cell_volumes'])
+        assert np.isclose(workbook['Signals']['M2'].value, report['points'][0]['distance_um'], atol=1e-14, rtol=1e-14)
+        workbook.close()
         assert digest(window.dataset.metadata.path) == original_hash == digest(args.image)
         surfaces = {int(s.name.split()[2]): SurfaceLocator(s) for s in window.dataset.scene.surfaces}
         for point in report['points']:
@@ -111,6 +122,7 @@ def exercise():
                        package_root=str(args.package_root.resolve()) if args.package_root else None,
                        device=args.device,
                        cells=len(report['signal_filter']['kept_cell_ids']), signals=len(report['points']),
+                       excel=str(workbook_path), volumes_um3=[r['volume_um3'] for r in report['cell_volumes']],
                        distance_range_um=[min(p['distance_um'] for p in report['points']), max(p['distance_um'] for p in report['points'])],
                        source_sha256=original_hash, native_imaris_runtime_tested=False)
         (output / 'summary.json').write_text(json.dumps(summary, indent=2))

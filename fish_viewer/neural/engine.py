@@ -215,7 +215,7 @@ def run_neural(entries, config, output_root, mode='train', model_directory=None,
             report['config'] = asdict(config)
         if audit_path:
             from .audit import load_audit
-            cases=load_audit(audit_path,config,directory,notify,cancel)
+            cases=load_audit(audit_path,config,directory,notify,cancel,training=mode=='train')
             report['audit_path']=str(Path(audit_path).resolve())
         else:
             cases = load_cases(entries, config, directory, notify, cancel)

@@ -142,11 +142,12 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         left.addWidget(self.stage_progress)
         self.elapsed = QtWidgets.QLabel('')
         left.addWidget(self.elapsed)
-        self.summary = QtWidgets.QLabel('The complete result is saved automatically as an Imaris image/scene pair and CSV tables.')
+        self.summary = QtWidgets.QLabel('Results are saved automatically as Imaris files, CSV tables and an Excel workbook with cell volumes and distances.')
         self.summary.setWordWrap(True)
         left.addWidget(self.summary)
         self.saved_button = self._button('Open saved analysis…', self.open_saved, left)
         self.results_button = self._button('Open result folder', self.open_result_folder, left)
+        self.excel_button = self._button('Export Excel…', self.export_excel, left)
         note = QtWidgets.QLabel('Processes time point 1. Cells without signals are removed. A = signal; B = nearest cell border.')
         note.setWordWrap(True)
         note.setObjectName('muted')
@@ -210,7 +211,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.distances.itemSelectionChanged.connect(self.focus_measurement)
         self.distances.itemDoubleClicked.connect(lambda _: self.tabs.setCurrentIndex(0))
         self.tabs.addTab(self.distances, 'Distances')
-        self.counts = self._table(['Cell', 'Channel', 'Channel name', 'Signals'])
+        self.counts = self._table(['Cell', 'Channel', 'Channel name', 'Signals', 'Volume (µm³)'])
         self.tabs.addTab(self.counts, 'Cell counts')
         splitter.addWidget(right)
         splitter.setStretchFactor(1, 1)
@@ -236,6 +237,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.run_button.setEnabled(not self.running and not self.loading and self.scans.count() > 0)
         self.cancel_button.setEnabled(self.running)
         self.results_button.setEnabled(self.result_path is not None)
+        self.excel_button.setEnabled(self.result_report is not None and not self.loading)
         for widget in (self.channels_button, self.fit_button, self.mode, self.axis, self.slice):
             widget.setEnabled(self.dataset is not None)
 
@@ -344,6 +346,9 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.background(read, done, failed)
 
     def set_dataset(self, dataset, report=None):
+        if report and 'cell_volumes' not in report:
+            from ..workflow.volumes import add_cell_volumes
+            add_cell_volumes(report, dataset.scene.surfaces)
         self.dataset, self.result_report = dataset, report
         if self.channel_dialog:
             self.channel_dialog.close()
@@ -372,7 +377,9 @@ class AnalysisWindow(QtWidgets.QMainWindow):
                     self.distances.setItem(i, j, item)
             for i, row in enumerate(report['counts']):
                 self.counts.insertRow(i)
-                for j, value in enumerate([row['cell_id'], row['channel']+1, row['channel_name'], row['count']]):
+                volume = next((v['volume_um3'] for v in report.get('cell_volumes', []) if v['cell_id'] == row['cell_id']), None)
+                for j, value in enumerate([row['cell_id'], row['channel']+1, row['channel_name'], row['count'],
+                                          f'{volume:.3f}' if volume is not None else 'Unavailable']):
                     self.counts.setItem(i, j, QtWidgets.QTableWidgetItem(str(value)))
             filtering = report['signal_filter']
             self.summary.setText(f'{filtering["kept_cell_count"]} cells kept · {len(report["points"])} signals and distances\n'
@@ -497,6 +504,19 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         if report.get('engine') != 'fish-analysis' or report.get('status') != 'complete':
             raise ValueError('Choose an analysis-result.json from a completed analysis.')
         self._load(path.parent / report['image'], path)
+
+    def export_excel(self):
+        if self.result_report is None:
+            return
+        default = str(self.result_path.parent / (self.dataset.metadata.path.stem + '.xlsx')) if self.result_path else 'analysis.xlsx'
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Export volumes and distances', default, 'Excel workbook (*.xlsx)')
+        if path:
+            try:
+                from ..workflow.excel import write_excel
+                write_excel(Path(path).with_suffix('.xlsx'), self.result_report)
+                self.phase.setText('Excel workbook saved: ' + str(path))
+            except Exception as exc:
+                self.error(str(exc))
 
     def open_result_folder(self):
         if self.result_path:

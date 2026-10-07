@@ -105,11 +105,13 @@ def validate_measurements(report, surfaces, metadata):
 
 def measure_result(path, output, emit=lambda event: None, cancel=None):
     emit(dict(kind='progress', phase='Checking cells and signals before measurement', current=0, total=0))
-    report, _, cell_metadata, metadata = validated_result(path, cancel)
+    report, labels, cell_metadata, metadata = validated_result(path, cancel)
     if not report.get('signal_filter') or report['signal_filter'] != cell_metadata.get('signal_filter'):
         raise ValueError('Remove cells without signals before measuring border distances.')
     surfaces, _ = read_prediction(report['cell_predictions'])
     points = measure_points(report, surfaces, metadata, emit, cancel)
+    from .volumes import add_cell_volumes
+    add_cell_volumes(report, surfaces, labels, cell_metadata['spacing_zyx'])
     directory = Path(output).resolve() / f'measured-scan-{datetime.now():%Y%m%d-%H%M%S-%f}'
     directory.mkdir(parents=True)
     try:

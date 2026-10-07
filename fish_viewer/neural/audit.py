@@ -179,12 +179,12 @@ def audit_collection(root,config,directory,emit=print,cancel=None):
     persist();emit(json.dumps(report['summary'],indent=2));return report
 
 
-def load_audit(path,config,directory,emit,cancel=None):
+def load_audit(path,config,directory,emit,cancel=None,training=True):
     path=Path(path).resolve();report=json.loads(path.read_text())
     if report.get('engine')!='stardist3d-audit' or report['status']!='complete':raise ValueError('Select a complete, error-free annotation audit.')
     for key in ('voxel_um','min_diameter_um','max_diameter_um','native_sampling','overlap_policy','seed'):
         if report['config'].get(key)!=getattr(config,key):raise ValueError(f'Audit and training differ in {key}; regenerate the audit.')
-    if report.get('parent_audit'):
+    if training and report.get('parent_audit'):
         for key in ('precision_mode','precision_max_diameter_um','curate_training_shapes','min_sphericity','max_elongation'):
             if report['config'].get(key)!=getattr(config,key):raise ValueError(f'Curated audit and training differ in {key}; derive a new audit.')
         if report['config'].get('use_shape_filter',True)!=config.use_shape_filter:

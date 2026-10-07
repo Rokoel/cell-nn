@@ -63,18 +63,20 @@ def validated_result(path, cancel=None):
 def write_tables(directory, report, prefix=''):
     """CSV channel numbers are one-based, as displayed in the viewer."""
     directory = Path(directory)
-    signal_fields = ['signal_id', 'cell_id', 'channel', 'x_um', 'y_um', 'z_um', 'score', 'contrast']
+    volumes = {r['cell_id']: r.get('volume_um3') for r in report.get('cell_volumes', [])}
+    signal_fields = ['signal_id', 'cell_id', 'channel', 'x_um', 'y_um', 'z_um', 'score', 'contrast', 'cell_volume_um3']
     if report.get('measurement'):
         signal_fields += ['b_x_um', 'b_y_um', 'b_z_um', 'distance_um', 'border_at_image_edge']
     for name, rows, fields in [
         ('signals', report['points'], signal_fields),
-        ('cell-counts', report['counts'], ['cell_id', 'channel', 'channel_name', 'count']),
+        ('cell-counts', report['counts'], ['cell_id', 'channel', 'channel_name', 'count', 'cell_volume_um3']),
     ]:
         with (directory / f'{prefix}{name}.csv').open('w', newline='', encoding='utf-8') as stream:
             writer = csv.DictWriter(stream, fieldnames=fields)
             writer.writeheader()
             for row in rows:
                 values = dict(row, channel=row['channel'] + 1)
+                values['cell_volume_um3'] = volumes.get(row['cell_id'])
                 if name == 'signals':
                     values.update(zip(('x_um', 'y_um', 'z_um'), values.pop('xyz')))
                     if 'border_xyz' in values:
@@ -88,6 +90,8 @@ def filter_result(path, output, emit=lambda event: None, cancel=None):
     # Measurements are tied to one contour archive. A new filter result needs
     # its own measurement stage, even when the surviving mesh geometry is equal.
     report.pop('measurement', None)
+    report.pop('cell_volumes', None)
+    report.pop('volume_method', None)
     report['points'] = [{k: v for k, v in p.items() if k not in
                         ('border_xyz', 'distance_um', 'border_triangle', 'border_at_image_edge')} for p in report['points']]
     kept = sorted({int(point['cell_id']) for point in report['points']})

@@ -61,15 +61,18 @@ def export_result(report_path, target, emit=lambda event: None, cancel=None):
     target = Path(target).expanduser().resolve()
     if target.suffix.lower() != '.ims':
         raise ValueError('Choose an export filename ending in .ims.')
-    suffixes = ['.ims', '.imx', '.signals.csv', '.cell-counts.csv', '.annotations.json']
+    suffixes = ['.ims', '.imx', '.signals.csv', '.cell-counts.csv', '.annotations.json', '.xlsx']
     destinations = [target.with_suffix(suffix) for suffix in suffixes]
     if any(path.exists() for path in destinations):
         raise FileExistsError('The export would overwrite existing files. Choose a new name or folder.')
     emit(dict(kind='progress', phase='Validating detections for export', current=0, total=1))
-    report, _, cell_metadata, metadata = validated_result(report_path, cancel)
+    report, labels, cell_metadata, metadata = validated_result(report_path, cancel)
     if not report.get('signal_filter') or report['signal_filter'] != cell_metadata.get('signal_filter'):
         raise ValueError('Remove cells without signals before exporting this workflow result.')
     surfaces, _ = read_prediction(report['cell_predictions'])
+    from .volumes import add_cell_volumes
+    from .excel import write_excel
+    add_cell_volumes(report, surfaces, labels, cell_metadata['spacing_zyx'])
     from .distances import validate_measurements
     validate_measurements(report, surfaces, metadata)
     if len(surfaces) != len({point['cell_id'] for point in report['points']}):
@@ -81,6 +84,7 @@ def export_result(report_path, target, emit=lambda event: None, cancel=None):
         digest = _copy_image(source, staging / target.name, emit, cancel)
         (staging / target.with_suffix('.imx').name).write_bytes(scene_xml(target.name, surfaces, metadata, report))
         write_tables(staging, report, target.stem + '.')
+        write_excel(staging / target.with_suffix('.xlsx').name, report)
         annotation_report = dict(report, engine='fish-scan-export', mode='export', image=target.name, scene=target.with_suffix('.imx').name,
                                  directory='.', cell_predictions=None, export_format='Imaris IMS + XML IMX',
                                  source_signal_report=str(Path(report_path).resolve()), image_sha256=digest,

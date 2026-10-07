@@ -28,9 +28,18 @@ def main():
                  'setup-analysis.sh', 'setup-analysis.bat'):
         shutil.copy2(ROOT / name, destination / name)
     shutil.copy2(ROOT / 'docs/fish-analysis.md', destination / 'README.md')
+    (destination / 'scripts').mkdir()
+    for name in ('verify_release.py', 'package_analysis.py', 'benchmark_measurements.py'):
+        shutil.copy2(ROOT / 'scripts' / name, destination / 'scripts' / name)
     (destination / 'docs').mkdir()
     for name in ('fish-analysis.md', 'imaris-export.md', 'signal-detection.md', 'neural-training.md'):
         shutil.copy2(ROOT / 'docs' / name, destination / 'docs' / name)
+    for name in ('measurement-accuracy.md', 'releasing.md'):
+        if (ROOT / 'docs' / name).exists():
+            shutil.copy2(ROOT / 'docs' / name, destination / 'docs' / name)
+    reports = ROOT / 'reports/measurement-accuracy'
+    if reports.exists():
+        shutil.copytree(reports, destination / 'reports/measurement-accuracy')
     provenance = {}
     for label, source in [('cells', cells), ('signals', signals)]:
         target = destination / 'models' / label
@@ -45,7 +54,7 @@ def main():
     (destination / 'models/origins.json').write_text(json.dumps(provenance, indent=2), encoding='utf-8')
     versions = {name: importlib.metadata.version(name) for name in (
         'PySide6', 'vtk', 'pyvista', 'pyvistaqt', 'numpy', 'scipy', 'scikit-image',
-        'h5py', 'tensorflow', 'keras', 'stardist')}
+        'h5py', 'tensorflow', 'keras', 'stardist', 'openpyxl')}
     (destination / 'tested-runtime.json').write_text(json.dumps(dict(platform=sys.platform, versions=versions), indent=2), encoding='utf-8')
     archive = shutil.make_archive(str(destination), 'zip', destination.parent, destination.name)
     print(json.dumps(dict(bundle=str(destination), archive=archive, models=provenance), indent=2))

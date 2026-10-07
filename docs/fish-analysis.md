@@ -38,6 +38,11 @@ the existing viewer. Windows and Linux launchers use the same application code.
    locates its signal and cell; double-clicking it opens the image tab.
 6. **Open result folder** opens the completed export. Open the `.imx` in Imaris
    with its matching `.ims` beside it.
+7. **Export Excel…** saves a workbook from the displayed analysis. A workbook is
+   also saved automatically beside every exported scan. Its sheets contain cell
+   volumes (µm³), signals and A/B distances (µm), per-channel counts, and a summary.
+   Older saved analyses also support Excel export; their mesh volumes are computed
+   when opened.
 
 The five steps run automatically: cell contours → signals inside those cells →
 remove cells with zero signals → create B points and A–B lines → export. Saved
@@ -45,6 +50,11 @@ model thresholds are reused. Roundness and elongation limits remain disabled;
 visible membrane evidence is still required. Signals whose centers lie inside
 the predicted cell are eligible, including near-border signals. Processing uses
 time point 1; the exported image preserves all original time points and channels.
+
+Every non-membrane channel is searched separately, including scans with two signal
+channels. A cell survives when **any** of those channels has at least one accepted
+signal. All accepted signals across those channels are retained and counted
+separately; a cell does not need a signal in every channel.
 
 Model folders and CPU/auto/GPU selection are under **Models and device**.
 The portable bundle defaults to `models/cells` and `models/signals`. In the main
@@ -78,6 +88,16 @@ mesh closure there, its CSV/table row is flagged **Image-edge contact**. This is
 not evidence of a membrane outside the acquired volume. Distances inherit the
 accuracy of the predicted cell contour and signal location.
 
+## Cell volumes
+
+The primary volume is the enclosed volume of the closed triangle mesh displayed
+and exported for that cell, in µm³. It uses physical XYZ calibration, consistent
+triangle orientation, and rejects open or non-manifold geometry. The workbook
+also records voxel-count volume as a separate sampling-dependent measurement
+for new runs; these two definitions can differ slightly. **Cell counts** shows
+the primary mesh volume. Image-edge truncation is flagged where applicable.
+Cell volume is not a signal volume or the volume of a fitted sphere.
+
 ## Saved results
 
 Each scan gets a unique `analysis-...` directory. Existing outputs are never
@@ -89,7 +109,9 @@ overwritten, and original scans remain untouched.
 - `export/*_measured.signals.csv`: signal/cell IDs, channel, score, A XYZ, B XYZ,
   distance in µm, and image-edge flag. CSV channels are one-based.
 - `export/*_measured.cell-counts.csv`: per-cell/channel counts, including zero
-  counts for a particular channel in a retained cell.
+  counts for a particular channel in a retained cell, and cell volume in µm³.
+- `export/*_measured.xlsx`: numeric cell volumes, A/B positions and distances,
+  signal scores, per-channel counts and units/model metadata.
 - `export/*_measured.annotations.json`: full numerical annotations and provenance.
 - `work/`: intermediate results, measured report, and contour archive.
 - Stage logs remain in the run folder for diagnosis.

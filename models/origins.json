@@ -1,0 +1,18 @@
+{
+  "cells": {
+    "source": "artifacts/balanced-fish/training/neural-train-20260918-151950-694838/model",
+    "sha256": {
+      "best.weights.h5": "9ac7817756cdd5f6ab2e81dfc07debed2cc0173a51a6fe56525746b72f02e686",
+      "thresholds.json": "04e978cbabd18fa0d20c1ffeb6b260353810010aee4a6e8f56c2538f53925e96",
+      "config.json": "b19c40a8e60784e38e84bc331d98e9a5728b2039e3750efd64f711e9f16c8335",
+      "fish-model.json": "69f3616a5f8ebd75dee0bb61ede72bf492a5d36c3c99282aec0fdd0428341e62"
+    }
+  },
+  "signals": {
+    "source": "artifacts/signal-fish/training/signal-train-20260919-020312-268747/model",
+    "sha256": {
+      "best.weights.h5": "5ce81cb5baa9bc7c3db98c4539ebf8b816bed978460919f9d3b469faa2a24b95",
+      "signal-model.json": "5453616c8bbda59a8760e14172f3df242f0429992367fa5d367ff8d546fa7bca"
+    }
+  }
+}

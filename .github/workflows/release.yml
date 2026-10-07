@@ -1,0 +1,99 @@
+name: Build and release FISH Analysis
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build and release (for example v0.2.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux-x64
+          - os: windows-2022
+            platform: windows-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    env:
+      QT_QPA_PLATFORM: offscreen
+      TF_CPP_MIN_LOG_LEVEL: '2'
+      CUDA_VISIBLE_DEVICES: '-1'
+      OMP_NUM_THREADS: '4'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install Linux graphics libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libopengl0 libgl1 libxcb-cursor0
+      - name: Install application and test dependencies
+        run: python -m pip install -e ".[neural,test]"
+      - name: Check tag and application version
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: python -c "import os,tomllib; v=tomllib.load(open('pyproject.toml','rb'))['project']['version']; assert os.environ['RELEASE_TAG']=='v'+v, 'Tag must equal v plus project version'"
+      - name: Test readers, geometry, export and Excel
+        run: python -m pytest -q -m "not neural and not gui and not integration"
+      - name: Verify bundled models on CPU
+        run: python scripts/verify_release.py
+      - name: Build source and model bundle
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          RELEASE_PLATFORM: ${{ matrix.platform }}
+        shell: bash
+        run: python scripts/package_analysis.py --output "dist/FISH-Analysis-${RELEASE_TAG}-${RELEASE_PLATFORM}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.platform }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Publish tested release bundles
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd release-assets && sha256sum *.zip > SHA256SUMS.txt)
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          else
+            gh release create "$RELEASE_TAG" release-assets/* --verify-tag \
+              --title "FISH Analysis $RELEASE_TAG" --notes-file docs/release-notes.md
+          fi

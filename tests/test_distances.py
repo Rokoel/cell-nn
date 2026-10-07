@@ -78,6 +78,8 @@ def test_measured_export_preserves_native_ab_lines_counts_and_csv(signal_result,
         rows = list(csv.DictReader(stream))
     assert len(rows) == 2 and float(rows[0]['distance_um']) == pytest.approx(measured['points'][0]['distance_um'])
     assert int(rows[0]['channel']) == 2
+    assert float(rows[0]['cell_volume_um3']) > 0
+    assert target.with_suffix('.xlsx').exists()
     assert all(key in rows[0] for key in ('b_x_um', 'b_y_um', 'b_z_um'))
     again = filter_result(path, tmp_path / 'again')
     assert 'measurement' not in again and all('border_xyz' not in p for p in again['points'])
@@ -146,6 +148,8 @@ def test_focused_app_opens_relocated_measurements_and_small_window(qapp, signal_
             qapp.processEvents(); time.sleep(.01)
         assert not window.loading and not errors
         assert window.distances.rowCount() == 2
+        assert window.excel_button.isEnabled()
+        assert float(window.counts.item(0, 4).text()) > 0
         assert sum(int(window.counts.item(i, 3).text()) for i in range(window.counts.rowCount())) == 2
         window.distances.selectRow(0)
         assert 'A → B:' in window.selection_info.text()

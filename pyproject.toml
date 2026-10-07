@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fish-viewer"
-version = "0.1.0"
+version = "0.2.0"
 description = "Desktop viewer for Imaris microscopy images and saved cell annotations"
 requires-python = ">=3.11"
 dependencies = [
@@ -19,6 +19,7 @@ dependencies = [
   "scipy>=1.13,<2",
   "scikit-image>=0.25,<0.27",
   "matplotlib>=3.8,<4",
+  "openpyxl>=3.1,<4",
 ]
 
 [project.optional-dependencies]
