@@ -1,0 +1,2 @@
+# Model provenance hashes cover exact bytes, including JSON line endings.
+models/** -text
