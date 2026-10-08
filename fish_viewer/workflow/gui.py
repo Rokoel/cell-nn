@@ -12,7 +12,6 @@ from ..models import LibraryEntry
 from ..neural.config import NeuralConfig
 from ..neural.model_picker import discover_models, read_model
 from ..neural.precision import evidence_preset
-from ..signals.config import SignalConfig
 
 
 class WorkflowPanel(QtWidgets.QWidget):
@@ -49,6 +48,9 @@ class WorkflowPanel(QtWidgets.QWidget):
                     break
             except (OSError, ValueError):
                 continue
+        bundled_signals=root/'models/signals-center-unet'
+        if (bundled_signals/'signal-model.json').is_file():
+            self.signal_model.setText(str(bundled_signals))
         self.output = QtWidgets.QLineEdit(str(root / 'workflow_runs'))
         self.settings = []
         for name, control, action in [
@@ -199,12 +201,8 @@ class WorkflowPanel(QtWidgets.QWidget):
             cell_model = self.cell_model.currentData()
             manifest = read_model(cell_model or '')
             self.selected_signal_model = str(Path(self.signal_model.text()).expanduser().resolve())
-            signals = json.loads((Path(self.selected_signal_model) / 'signal-model.json').read_text())
-            if signals.get('engine') != 'signal-cnn3d' or signals.get('version') != 1:
-                raise ValueError('Select a compatible trained signal model.')
-            SignalConfig(**signals['config']).validate()
-            if not (Path(self.selected_signal_model) / signals['checkpoint']).is_file():
-                raise ValueError('The signal model checkpoint is missing.')
+            from ..signals.model import read_model as read_signal_model
+            read_signal_model(self.selected_signal_model)
             self.selected_entry = self.host.entry
             self.selected_device = self.device.currentText()
             self.begin()

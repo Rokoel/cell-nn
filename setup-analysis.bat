@@ -5,6 +5,8 @@ if errorlevel 1 goto failed
 if errorlevel 1 goto failed
 "%~dp0.venv\Scripts\python.exe" -m pip install -e "%~dp0.[neural]"
 if errorlevel 1 goto failed
+call "%~dp0setup-spots.bat"
+if errorlevel 1 goto failed
 echo Setup complete. Start run-analysis.bat.
 pause
 exit /b 0

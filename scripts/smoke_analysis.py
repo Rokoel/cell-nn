@@ -19,6 +19,8 @@ parser.add_argument('--device', default='auto', choices=['auto', 'cpu', 'gpu'])
 parser.add_argument('--package-root', type=Path, help='Verify the distributed source/model bundle')
 parser.add_argument('--boundary-model', type=Path, help='Exercise the optional seeded 3D U-Net stage')
 parser.add_argument('--cell-model', type=Path, help='Select StarDist or the center-and-box detector')
+parser.add_argument('--signal-model', type=Path, help='Exercise a selected signal checkpoint')
+parser.add_argument('--membrane-snap', action='store_true', help='Exercise local membrane peak refinement')
 args = parser.parse_args()
 if args.package_root:
     sys.path.insert(0, str(args.package_root.resolve()))
@@ -70,10 +72,15 @@ def exercise():
         original_hash = digest(args.image)
         window.output.setText(str((output / 'runs').resolve()))
         window.device.setCurrentText(args.device)
+        window.membrane_snap.setChecked(args.membrane_snap)
+        if args.membrane_snap:
+            window.options_button.setChecked(True)
         if args.boundary_model:
             window.boundary_model.setText(str(args.boundary_model.resolve()))
         if args.cell_model:
             window.cell_model.setText(str(args.cell_model.resolve()))
+        if args.signal_model:
+            window.signal_model.setText(str(args.signal_model.resolve()))
         if args.package_root:
             assert Path(window.cell_model.text()).is_relative_to(args.package_root.resolve())
             assert Path(window.signal_model.text()).is_relative_to(args.package_root.resolve())
@@ -85,6 +92,9 @@ def exercise():
         wait(lambda: not window.running and not window.loading)
         assert window.result_path
         report = window.result_report
+        if args.membrane_snap:
+            assert report['membrane_snap']['cells'], 'Missing membrane peak diagnostics'
+            assert 'snap' in json.loads(window.result_path.read_text())['stages']
         if window.boundary_model.text():
             assert report['boundary_refinement']['cells'], 'Missing boundary diagnostics'
             stages=json.loads(window.result_path.read_text())['stages']
@@ -134,6 +144,8 @@ def exercise():
                        package_root=str(args.package_root.resolve()) if args.package_root else None,
                        device=args.device,
                        boundary_model=window.boundary_model.text() or None,
+                       signal_model=window.signal_model.text(),
+                       membrane_snap=args.membrane_snap,
                        cells=len(report['signal_filter']['kept_cell_ids']), signals=len(report['points']),
                        excel=str(workbook_path), volumes_um3=[r['volume_um3'] for r in report['cell_volumes']],
                        distance_range_um=[min(p['distance_um'] for p in report['points']), max(p['distance_um'] for p in report['points'])],

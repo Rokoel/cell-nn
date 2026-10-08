@@ -64,7 +64,7 @@ def compare(audit,baseline,refined):
         markers=marker_points(scenes)
         membership=reference_memberships([p['xyz'] for p in markers],references,prepared.origin,prepared.spacing)
         sizes=np.bincount(new_labels.ravel())
-        diagnostics={r['cell_id']:r for r in new_metadata['refinement']['cells']}
+        diagnostics={r['cell_id']:r for r in new_metadata.get('membrane_snap', new_metadata.get('refinement', {})).get('cells', [])}
         for ref_id,match in enumerate(old_row['metrics']['per_cell']):
             cell=match['predicted_label']
             if cell is None or match['iou']<.5 or case['audit']['reference_cut'][ref_id]:continue
@@ -100,8 +100,8 @@ def compare(audit,baseline,refined):
     original_inside=[r for r in signals if r['baseline_a_inside']]
     summary=dict(scans=len(old_rows),matched_baseline_complete_cells=len(cells),
                  cells_remaining_iou_ge_05=sum(r['refined_iou']>=.5 for r in cells),
-                 total_refined_cells=sum(d['accepted'] for r in new['files'] for d in r['refinement']),
-                 total_detector_cells=sum(len(r['refinement']) for r in new['files']),
+                 total_refined_cells=sum(d['accepted'] for r in new['files'] for d in r.get('membrane_snap', r.get('refinement', []))),
+                 total_detector_cells=sum(len(r.get('membrane_snap', r.get('refinement', []))) for r in new['files']),
                  eligible_manual_distances=len(eligible),manual_distance_candidates=len(signals),
                  baseline_inside_but_refined_outside=sum(r['baseline_a_inside'] and not r['refined_a_inside'] for r in signals),
                  original_inside_manual_distances=len(original_inside),
@@ -157,7 +157,7 @@ def fixed_measurements(benchmark, refined_report, boundary_report):
                  baseline_distance_same_eligible_signals=paired_stats(eligible,'manual_ab_distance_um','baseline_distance_um'),
                  refined_distance=paired_stats(eligible,'manual_ab_distance_um','refined_distance_um'))
     return dict(summary=summary,cells=cells,signals=signals,policy='Original signal centers and retained matched cells '
-                'are frozen; no new signal detection. Volume comparison includes all original 79 cells. '
+                'are frozen; no new signal detection. Volume comparison includes all original eligible cells. '
                 'Distances require the original predicted A center to remain inside its assigned cell and '
                 'refined IoU >= .5. Lost eligibility is reported; all original 73 signal rows remain available.')
 

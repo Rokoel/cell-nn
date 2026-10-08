@@ -13,6 +13,15 @@ from .config import SignalConfig
 
 
 def main():
+    early = argparse.ArgumentParser(add_help=False)
+    early.add_argument('--model', type=Path)
+    early.add_argument('--mode')
+    known, _ = early.parse_known_args()
+    if known.model and known.mode in ('apply', 'controls'):
+        from ..spots.runtime import DIRECT_ENGINES, dispatch
+        manifest = json.loads((known.model / 'signal-model.json').read_text())
+        if manifest.get('engine') in DIRECT_ENGINES:
+            dispatch(sys.argv[1:])
     if sys.platform.startswith('linux') and not os.environ.get('FISH_CUDA_PATH_READY'):
         libraries=sorted((Path(sysconfig.get_paths()['purelib'])/'nvidia').glob('*/lib'))
         if libraries:
@@ -33,8 +42,12 @@ def main():
     parser.add_argument('--steps',type=int)
     parser.add_argument('--device',choices=['auto','cpu','gpu'],default='auto')
     parser.add_argument('--cancel-file',type=Path)
+    parser.add_argument('--config',type=Path,help='Signal configuration JSON (for auditing/training).')
+    parser.add_argument('--initial-model',type=Path,help='Fine-tune a compatible saved signal checkpoint.')
+    parser.add_argument('--split',choices=['training','validation','test'],help='Audit only this acquisition split.')
     args=parser.parse_args()
-    config=SignalConfig(device=args.device)
+    config=SignalConfig(**json.loads(args.config.read_text())) if args.config else SignalConfig()
+    config=replace(config,device=args.device)
     if args.epochs is not None:config=replace(config,epochs=args.epochs)
     if args.steps is not None:config=replace(config,steps_per_epoch=args.steps)
     config.validate()
@@ -44,7 +57,7 @@ def main():
     if args.mode=='audit':
         if not args.cell_report or not args.collection_audit:parser.error('Audit requires --cell-report and --collection-audit.')
         from .data import build_audit
-        report=build_audit(args.cell_report,args.collection_audit,args.output,config,emit,cancel)
+        report=build_audit(args.cell_report,args.collection_audit,args.output,config,emit,cancel,split=args.split)
     elif args.mode=='controls':
         if not args.model:parser.error('Controls require --model.')
         from .controls import check_controls
@@ -53,7 +66,7 @@ def main():
         from .engine import train,apply
         if args.mode=='train':
             if not args.audit:parser.error('Training requires --audit.')
-            report=train(args.audit,args.output,config,emit,cancel)
+            report=train(args.audit,args.output,config,emit,cancel,initial_model=args.initial_model)
         else:
             if not args.model or not args.image or not args.cell_predictions:parser.error('Application requires --model, --image and --cell-predictions.')
             report=apply(args.image,args.scene,args.cell_predictions,args.model,args.output,config.device,emit,cancel)

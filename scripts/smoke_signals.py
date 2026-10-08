@@ -17,13 +17,15 @@ from fish_viewer.signals.data import at_labels
 
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--report',type=Path,required=True)
+parser.add_argument('--output',type=Path,default=Path('artifacts/signal-fish/gui-smoke'))
+parser.add_argument('--model',type=Path,help='Exercise a chosen signal model instead of the training checkpoint')
 args=parser.parse_args()
 trained=json.loads(args.report.read_text())
 audit=json.loads(Path(trained['audit_path']).read_text())
 test_rows=sorted(trained['files'],key=lambda r:r['count'],reverse=True)
 case=next(c for c in audit['cases'] if c['image']==test_rows[0]['image'])
 app=QtWidgets.QApplication([]);app.setStyle('Fusion');window=MainWindow();window.resize(1100,700);window.show()
-output=Path('artifacts/signal-fish/gui-smoke');output.mkdir(parents=True,exist_ok=True)
+output=args.output;output.mkdir(parents=True,exist_ok=True)
 
 
 def wait_until(predicate,seconds=120):
@@ -38,6 +40,7 @@ def exercise():
         wait_until(lambda:not window._pending_load)
         window.show_signals();panel=window.signal_panel
         panel.display_report(trained);panel.tabs.setCurrentIndex(0);app.processEvents()
+        if args.model:panel.model_path.setText(str(args.model.resolve()))
         panel.grab().save(str(output/'training-panel.png'))
         panel.mode.setCurrentIndex(0);panel.output.setText(str(output/'runs'))
         errors=[];panel.error=errors.append;panel.start();wait_until(lambda:panel.job is None)

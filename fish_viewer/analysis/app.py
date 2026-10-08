@@ -12,7 +12,7 @@ from ..models import LibraryEntry, Scene
 from ..reader import entry_for_path, load_dataset, scan_library
 from ..signals.overlays import read_signals
 from ..views import SliceView, VolumeView
-from .controller import AnalysisController, default_models, default_refinement_model, default_proposal_model, STAGES
+from .controller import AnalysisController, default_models, default_refinement_model, default_proposal_model, migrate_bundled_defaults, STAGES
 
 
 class AnalysisWindow(QtWidgets.QMainWindow):
@@ -101,6 +101,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         left.addWidget(self.options_button)
         self.options = QtWidgets.QWidget()
         form = QtWidgets.QFormLayout(self.options)
+        migrate_bundled_defaults(self.settings)
         cells, signals = default_models()
         self.cell_model = QtWidgets.QLineEdit(self.settings.value('cell_model', default_proposal_model() or str(cells)))
         self.cell_model.setToolTip('Choose a StarDist model or a center-and-box detector folder. The latter also requires a Boundaries model.')
@@ -108,7 +109,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.boundary_model = QtWidgets.QLineEdit(self.settings.value('boundary_model', default_refinement_model()))
         self.boundary_model.setPlaceholderText('Optional 3D U-Net model folder')
         if not any((Path(self.cell_model.text()) / name).is_file() for name in ('fish-model.json', 'proposal-model.json')):
-            self.cell_model.setText(str(cells))
+            self.cell_model.setText(default_proposal_model() or str(cells))
         if not (Path(self.signal_model.text()) / 'signal-model.json').is_file():
             self.signal_model.setText(str(signals))
         for title, field in [('Cells', self.cell_model), ('Boundaries', self.boundary_model), ('Signals', self.signal_model)]:
@@ -120,6 +121,21 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.device.addItems(['auto', 'cpu', 'gpu'])
         self.device.setCurrentText(self.settings.value('device', 'auto'))
         form.addRow('Device', self.device)
+        self.membrane_snap = QtWidgets.QCheckBox('Snap to membrane (experimental)')
+        self.membrane_snap.setChecked(str(self.settings.value('membrane_snap', 'false')).lower() == 'true')
+        self.membrane_snap.setToolTip('Move existing contour points along surface normals toward brighter cell-channel peaks. '
+                                     'Weak or unsafe changes retain the original contour. Applies before signal detection and measurements.')
+        form.addRow(self.membrane_snap)
+        self.membrane_shift = QtWidgets.QDoubleSpinBox()
+        self.membrane_shift.setRange(.05, .6)
+        self.membrane_shift.setSingleStep(.05)
+        self.membrane_shift.setSuffix(' µm')
+        self.membrane_shift.setValue(float(self.settings.value('membrane_shift_um', .3)))
+        self.membrane_shift.setToolTip('Maximum local peak search distance in either direction. '
+                                      'The contour moves halfway toward the supported peak.')
+        self.membrane_shift.setEnabled(self.membrane_snap.isChecked())
+        self.membrane_snap.toggled.connect(self.membrane_shift.setEnabled)
+        form.addRow('Membrane search radius', self.membrane_shift)
         self.boundary_training_button = QtWidgets.QPushButton('Train boundary model…')
         self.boundary_training_button.clicked.connect(self.train_boundaries)
         form.addRow(self.boundary_training_button)
@@ -131,6 +147,9 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.bundled_cells_button.clicked.connect(lambda: (
             self.cell_model.setText(default_proposal_model()), self.boundary_model.setText(default_refinement_model())))
         form.addRow(self.bundled_cells_button)
+        self.bundled_signals_button = QtWidgets.QPushButton('Use bundled signal model')
+        self.bundled_signals_button.clicked.connect(lambda: self.signal_model.setText(str(default_models()[1])))
+        form.addRow(self.bundled_signals_button)
         left.addWidget(self.options)
         self.options.hide()
         self.options_button.toggled.connect(lambda visible: (
@@ -426,6 +445,8 @@ class AnalysisWindow(QtWidgets.QMainWindow):
                             ('boundary_model', self.boundary_model), ('signal_model', self.signal_model)]:
             self.settings.setValue(key, widget.text())
         self.settings.setValue('device', self.device.currentText())
+        self.settings.setValue('membrane_snap', self.membrane_snap.isChecked())
+        self.settings.setValue('membrane_shift_um', self.membrane_shift.value())
         self.sync_buttons()
         self.next_scan()
 
@@ -445,7 +466,8 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         item.setText('Processing · ' + Path(self.active_image).name)
         try:
             self.controller.start(self.active_image, self.output.text(), self.cell_model.text(),
-                                  self.signal_model.text(), self.device.currentText(), self.boundary_model.text().strip() or None)
+                                  self.signal_model.text(), self.device.currentText(), self.boundary_model.text().strip() or None,
+                                  membrane_snap=dict(max_shift_um=self.membrane_shift.value()) if self.membrane_snap.isChecked() else None)
         except Exception as exc:
             self.failed(str(exc))
 

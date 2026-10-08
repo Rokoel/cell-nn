@@ -17,6 +17,8 @@ def write_excel(path, report):
     totals = Counter(p['cell_id'] for p in report['points'])
     refinement = report.get('boundary_refinement', {})
     refinements = {r['cell_id']: r for r in refinement.get('cells', [])}
+    snap = report.get('membrane_snap', {})
+    snaps = {r['cell_id']: r for r in snap.get('cells', [])}
     def sheet(name, headers, rows):
         page = workbook.create_sheet(name)
         page.append(headers)
@@ -34,12 +36,15 @@ def write_excel(path, report):
         for col in page.columns:
             page.column_dimensions[col[0].column_letter].width = min(60, max(16, len(str(col[0].value))+2))
     extra_headers = ['Boundary refinement', 'Refinement fallback reason'] if refinement else []
-    sheet('Cells', ['Cell', 'Volume (um^3)', 'Voxel volume (um^3)', 'Signals (all channels)', 'Volume status', 'Cell at image edge']+extra_headers,
+    snap_headers = ['Membrane peak refinement', 'Membrane fallback reason', 'Mean membrane shift (um)'] if snap else []
+    sheet('Cells', ['Cell', 'Volume (um^3)', 'Voxel volume (um^3)', 'Signals (all channels)', 'Volume status', 'Cell at image edge']+extra_headers+snap_headers,
           [[cell, volumes.get(cell, {}).get('volume_um3'), volumes.get(cell, {}).get('voxel_volume_um3'), totals[cell],
             volumes.get(cell, {}).get('volume_status', 'unavailable'), volumes.get(cell, {}).get('cell_at_image_edge')]
             + ([('crop contour' if report.get('cell_detector',{}).get('engine')=='cell-center-box3d' else 'refined')
                 if refinements.get(cell, {}).get('accepted') else 'detector contour retained',
                 refinements.get(cell, {}).get('fallback_reason')] if refinement else [])
+            + (['snapped' if snaps.get(cell, {}).get('accepted') else 'original contour retained',
+                snaps.get(cell, {}).get('fallback_reason'), snaps.get(cell, {}).get('mean_shift_um')] if snap else [])
            for cell in sorted(set(volumes) | set(totals))])
     sheet('Signals', ['Signal', 'Cell', 'Channel (1-based)', 'Channel name', 'Score', 'Cell volume (um^3)',
                      'A x (um)', 'A y (um)', 'A z (um)', 'B x (um)', 'B y (um)', 'B z (um)', 'Distance (um)', 'Border at image edge'],
@@ -56,6 +61,8 @@ def write_excel(path, report):
         ['Distance definition', report.get('measurement', {}).get('method', 'not measured')],
         ['Boundary model', str(refinement.get('model', 'none'))],
         ['Cell detector', str(report.get('cell_detector', {}).get('engine', 'StarDist'))],
+        ['Membrane peak refinement', 'enabled' if snap else 'disabled'],
+        ['Membrane peak search radius (um)', snap.get('config', {}).get('max_shift_um')],
         ['Cell retention', 'At least one accepted signal in any non-membrane channel'],
         ['Units', 'Coordinates and distances: um; volumes: um^3']])
     fd, temporary = tempfile.mkstemp(suffix='.xlsx', prefix='.fish-', dir=path.parent)

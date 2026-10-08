@@ -23,12 +23,19 @@ class SignalPanel(QtWidgets.QWidget):
         for control in (self.mode,self.run_button,self.cancel_button,open_button):row.addWidget(control)
         layout.addLayout(row)
         form=QtWidgets.QFormLayout()
-        self.model_path=QtWidgets.QLineEdit();self.audit_path=QtWidgets.QLineEdit(str(root/'artifacts/signal-fish/audit/audit.json'))
+        self.model_path=QtWidgets.QLineEdit()
+        refreshed=root/'artifacts/signal-refresh/data/audit.json'
+        safe=root/'artifacts/signal-refresh/safe-labels/audit.json'
+        if safe.exists():refreshed=safe
+        self.audit_path=QtWidgets.QLineEdit(str(refreshed if refreshed.exists() else root/'artifacts/signal-fish/audit/audit.json'))
         self.output=QtWidgets.QLineEdit(str(root/'signal_runs'))
-        models=sorted((root/'artifacts/signal-fish').glob('**/signal-model.json'),key=lambda p:p.stat().st_mtime,reverse=True)
-        for manifest in models:
-            report=manifest.parent.parent/'report.json'
-            if report.is_file() and json.loads(report.read_text()).get('status')=='complete':self.model_path.setText(str(manifest.parent));break
+        bundled=root/'models/signals-center-unet'
+        if (bundled/'signal-model.json').is_file():self.model_path.setText(str(bundled))
+        else:
+            models=sorted((root/'artifacts/signal-fish').glob('**/signal-model.json'),key=lambda p:p.stat().st_mtime,reverse=True)
+            for manifest in models:
+                report=manifest.parent.parent/'report.json'
+                if report.is_file() and json.loads(report.read_text()).get('status')=='complete':self.model_path.setText(str(manifest.parent));break
         for title,edit,folder in [('Signal model',self.model_path,True),('Signal audit',self.audit_path,False),('Output folder',self.output,True)]:
             button=QtWidgets.QPushButton('Browse…')
             button.clicked.connect(lambda checked=False,e=edit,f=folder:self.browse(e,f))
@@ -136,13 +143,14 @@ class SignalPanel(QtWidgets.QWidget):
             self.phase.setText('Signal worker failed');self.error(self.stderr[-1500:] or 'The signal worker failed to start.')
 
     def display_report(self,report):
-        if report.get('engine')!='signal-cnn3d':raise ValueError('Choose a signal training or application report.')
+        if report.get('engine') not in ('signal-cnn3d', 'signal-center-unet3d', 'signal-spotiflow3d') or report.get('mode') not in ('train', 'apply'):raise ValueError('Choose a signal training or single-scan application report.')
         self.report=report;self.history=report.get('epochs',[]);self.draw()
         if report.get('progress'):self.update_progress(report['progress'])
         if report.get('model_directory'):self.model_path.setText(report['model_directory'])
         text=f'{report["status"]} · {report["directory"]}'
         if report['mode']=='train':
-            self.epoch_label.setText(f'{len(self.history)} completed epochs · best epoch {report.get("best_epoch")}')
+            if report['status'] != 'running' or 'epoch' not in report.get('progress', {}):
+                self.epoch_label.setText(f'{len(self.history)} completed epochs · best epoch {report.get("best_epoch")}')
             for split in ('validation','test'):
                 metric=report.get(split)
                 if metric:
@@ -165,10 +173,11 @@ class SignalPanel(QtWidgets.QWidget):
         axes=self.canvas.axes
         for ax in axes:ax.clear();ax.grid(alpha=.15);ax.set_xlabel('Epoch')
         x=[r['epoch'] for r in self.history]
-        for key,label,color in [('loss','Training','#56dcc1'),('val_loss','Validation','#84bafa')]:axes[0].plot(x,[r[key] for r in self.history],label=label,color=color)
-        axes[0].set_title('Binary cross-entropy');axes[0].legend()
+        for key,label,color in [('loss','Training','#56dcc1'),('val_loss','Validation','#84bafa')]:
+            if all(key in r for r in self.history):axes[0].plot(x,[r[key] for r in self.history],label=label,color=color)
+        axes[0].set_title('Training loss');axes[0].legend()
         for ax,key in zip(axes[1:],('precision','recall','f05')):
-            ax.plot(x,[r['validation'][key] for r in self.history],color='#56dcc1');ax.set_title('Validation '+key+' · score 0.5');ax.set_ylim(0,1)
+            ax.plot(x,[(r.get('validation_selected') or r.get('validation') or r).get(key) for r in self.history],color='#56dcc1');ax.set_title('Validation '+key+(' · selected score' if any('validation_selected' in r or 'threshold' in r for r in self.history) else ' · score 0.5'));ax.set_ylim(0,1)
         self.canvas.style();self.canvas.draw_idle()
 
     def open_report(self):

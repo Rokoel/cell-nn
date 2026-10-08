@@ -95,7 +95,8 @@ def infer_channels(images,points,membrane,origin,spacing,config):
         scores=[channel_evidence(image,point['xyz'],origin,spacing) for image in images]
         order=sorted((c for c in range(len(images)) if c!=membrane),key=lambda c:scores[c]['score'],reverse=True)
         channel=order[0] if order else None
-        good=channel is not None and scores[channel]['score']>=config.channel_score_min and scores[channel]['contrast']>=config.candidate_contrast
+        contrast_min=config.channel_contrast_min if config.channel_contrast_min is not None else config.candidate_contrast
+        good=channel is not None and scores[channel]['score']>=config.channel_score_min and scores[channel]['contrast']>=contrast_min
         if len(order)>1:good=good and scores[channel]['score']>=config.channel_margin*max(.01,scores[order[1]]['score'])
         rows.append(dict(point,channel=channel if good else None,channel_evidence=scores))
     return rows
@@ -103,6 +104,8 @@ def infer_channels(images,points,membrane,origin,spacing,config):
 
 def candidates(image,cells,spacing,origin,config):
     spacing=np.asarray(spacing)
+    if config.candidate_scales_um:
+        return multiscale_candidates(image,cells,spacing,origin,config)
     smooth=ndi.gaussian_filter(image,np.maximum(.55,config.candidate_sigma_um/spacing))
     background=ndi.gaussian_filter(image,np.maximum(.8,config.candidate_background_um/spacing))
     response=np.maximum(0,smooth-background)
@@ -126,6 +129,38 @@ def candidates(image,cells,spacing,origin,config):
     return accepted
 
 
+def multiscale_candidates(image,cells,spacing,origin,config):
+    """Merge 3D peaks across physical spot sizes; the CNN makes acceptance decisions.
+
+    A native-voxel neighbourhood finds peaks before physical-distance suppression.
+    Unlike the legacy large rectangular maximum filter, it does not hide a nearby
+    dim peak merely because a brighter peak lies elsewhere in that rectangle.
+    Old checkpoints without candidate_scales_um retain their original algorithm.
+    """
+    from itertools import product
+    proposed=[]
+    for scale in sorted(set(config.candidate_scales_um)):
+        smooth=ndi.gaussian_filter(image,np.maximum(.55,scale/spacing))
+        broad=max(config.candidate_background_um,scale*config.candidate_background_ratio)
+        background=ndi.gaussian_filter(image,np.maximum(.8,broad/spacing))
+        response=np.maximum(0,smooth-background)
+        peaks=(response==ndi.maximum_filter(response,size=3,mode='nearest')) & (response>=config.candidate_contrast) & (cells>0)
+        positions=np.argwhere(peaks)
+        proposed.extend((float(response[tuple(p)]),tuple(p),float(scale)) for p in positions)
+    proposed.sort(key=lambda p:-p[0])
+    accepted=[];bins={};distance=config.candidate_separation_um
+    neighbours=list(product((-1,0,1),repeat=3))
+    for value,position,scale in proposed:
+        physical=np.asarray(position)*spacing
+        cell=int(cells[position]);key=np.floor(physical/distance).astype(int)
+        near=[old for delta in neighbours for old in bins.get((cell,*tuple(key+delta)),[])]
+        if any(np.linalg.norm(physical-old)<distance for old in near):continue
+        bins.setdefault((cell,*tuple(key)),[]).append(physical)
+        accepted.append(dict(xyz=(physical[::-1]+origin).tolist(),cell_id=cell,
+                             contrast=value,candidate_scale_um=scale))
+    return accepted
+
+
 def extract_patches(images,membrane,cells,rows,origin,spacing,config):
     size=config.patch_size
     offsets=(np.moveaxis(np.indices((size,)*3),0,-1)-(size-1)/2)*config.patch_spacing_um
@@ -139,18 +174,99 @@ def extract_patches(images,membrane,cells,rows,origin,spacing,config):
     return result
 
 
-def candidate_targets(rows,truth,supervised,config):
+def candidate_targets(rows,truth,supervised,config,exclusion_points=None):
     targets=np.full(len(rows),-1,np.int8)
     for index,row in enumerate(rows):
         if not supervised[index]:continue
         points=[p['xyz'] for p in truth if p['channel']==row['channel'] and p['cell_id']==row['cell_id']]
         distance=min((np.linalg.norm(np.array(row['xyz'])-p) for p in points),default=np.inf)
-        if distance<=config.match_radius_um:targets[index]=1
+        if distance<=config.match_radius_um and not config.one_to_one_positives:targets[index]=1
         elif distance>=config.negative_radius_um:targets[index]=0
+    if config.one_to_one_positives and rows and truth:
+        from scipy.optimize import linear_sum_assignment
+        distances=cdist([p['xyz'] for p in rows],[p['xyz'] for p in truth])
+        compatible=np.array([[bool(supervised[i]) and p['channel']==r['channel'] and p['cell_id']==r['cell_id']
+                              for r in truth] for i,p in enumerate(rows)])
+        cost=np.where(compatible & (distances<=config.match_radius_um),distances,1e6)
+        left,right=linear_sum_assignment(cost)
+        targets[left[cost[left,right]<1e6]]=1
+    # A visible annotated signal remains an unsafe negative even if its center
+    # falls outside this predicted cell or its channel cannot be resolved.
+    if exclusion_points:
+        from scipy.spatial import cKDTree
+        for channel in {p['channel'] for p in rows}:
+            points=[p['xyz'] for p in exclusion_points if p['channel'] in (channel,None)]
+            indices=[i for i,p in enumerate(rows) if p['channel']==channel and targets[i]==0]
+            if points and indices:
+                distances=cKDTree(points).query([rows[i]['xyz'] for i in indices])[0]
+                targets[np.asarray(indices)[distances<config.negative_radius_um]]=-1
     return targets
 
 
-def build_audit(cell_report,audit_path,output,config=SignalConfig(),emit=print,cancel=None):
+def prepare_supervision(case,sources,row,config):
+    """Load one scan with checked pixels, grid and sparse manual supervision."""
+    source=sources[case['image']]
+    for alias in case['audit']['aliases']:
+        s=sources[alias];stat=Path(alias).stat()
+        if stat.st_size!=s['size'] or stat.st_mtime_ns!=s['mtime_ns']:
+            raise ValueError('Source changed since cell audit.')
+        if s['fingerprint']!=source['fingerprint']:
+            raise ValueError('Aliases differ in raw channels; a new split-safe signal audit is required.')
+        for scene in s['scene_stats']:
+            st=Path(scene['path']).stat()
+            if st.st_size!=scene['size'] or st.st_mtime_ns!=scene['mtime_ns']:
+                raise ValueError('Annotations changed since cell audit.')
+    with np.load(row['predictions'],allow_pickle=False) as archive:
+        labels=archive['labels'];metadata=json.loads(str(archive['metadata']))
+    if metadata['fingerprint']!=source['fingerprint']:
+        raise ValueError('Cell predictions do not match source pixels.')
+    for field in ('spacing_zyx','origin_xyz'):
+        if not np.allclose(metadata[field],case['audit'][field],rtol=1e-6,atol=1e-8):
+            raise ValueError('Reference and prediction grids differ; use the matching calibrated collection audit.')
+    scenes=sorted({scene for alias in case['audit']['aliases'] for scene in sources[alias]['scenes']})
+    points=marker_points(scenes)
+    references,_=read_references(Path(case['directory'])/'references.npz')
+    memberships=reference_memberships([p['xyz'] for p in points],references,metadata['origin_xyz'],metadata['spacing_zyx'],config.assignment_tolerance_um)
+    dataset=load_dataset(LibraryEntry(Path(case['image']),Path(case['scene']) if case['scene'] else None))
+    digest=hashlib.sha256();digest.update(str(dataset.volumes[0].shape).encode())
+    for volume in dataset.volumes:digest.update(memoryview(np.ascontiguousarray(volume)))
+    if digest.hexdigest()!=source['fingerprint']:
+        raise ValueError('Decoded source pixels differ from the audited fingerprint.')
+    images=[normalized(v) for v in dataset.volumes];membrane=int(metadata['channel'])
+    origin=np.asarray(dataset.center_origin);spacing=np.asarray(dataset.spacing[::-1])
+    points=infer_channels(images,points,membrane,origin,spacing,config)
+    marked={m for group in memberships for m in group}
+    ambiguous={m for point,group in zip(points,memberships) if point['channel'] is None for m in group}
+    usable=marked-ambiguous
+    roi=np.zeros(labels.shape,np.uint8)
+    for ref in usable:
+        box,mask=references[ref];roi[box][mask]=1
+    for ref in ambiguous:
+        box,mask=references[ref];roi[box][mask]=0
+    roi*=labels>0
+    truth=[]
+    for point,group in zip(points,memberships):
+        point['manual_cells']=group
+        point['cell_id']=int(at_labels(labels,[point['xyz']],metadata['origin_xyz'],metadata['spacing_zyx'])[0])
+        point['usable']=point['channel'] is not None and bool(set(group)&usable) and not bool(set(group)&ambiguous) and point['cell_id']>0
+        if point['usable']:truth.append(point)
+    return dict(source=source,labels=labels,metadata=metadata,roi=roi,dataset=dataset,images=images,
+                membrane=membrane,origin=origin,spacing=spacing,points=points,truth=truth,
+                marked=marked,ambiguous=ambiguous,usable=usable,
+                native=native_labels(labels,metadata,dataset))
+
+
+def supervised_candidates(prepared,config):
+    rows=[]
+    for channel,image in enumerate(prepared['images']):
+        if channel==prepared['membrane']:continue
+        rows.extend(dict(p,channel=channel) for p in candidates(image,prepared['native'],prepared['spacing'],prepared['origin'],config))
+    metadata=prepared['metadata']
+    supervised=at_labels(prepared['roi'],[p['xyz'] for p in rows],metadata['origin_xyz'],metadata['spacing_zyx'])>0
+    return [p for p,valid in zip(rows,supervised) if valid],len(rows)
+
+
+def build_audit(cell_report,audit_path,output,config=SignalConfig(),emit=print,cancel=None,split=None):
     """Use all retained acquisitions; never label unmarked cells as negative."""
     output=Path(output).resolve();output.mkdir(parents=True,exist_ok=True)
     if (output/'audit.json').exists():raise ValueError('Choose a new output folder to preserve the existing audit.')
@@ -158,63 +274,28 @@ def build_audit(cell_report,audit_path,output,config=SignalConfig(),emit=print,c
     if cells_run['status']!='complete' or collection['status']!='complete':raise ValueError('Completed cell run and audit required.')
     sources={s['image']:s for s in collection['sources']}
     cell_rows={r['image']:r for r in cells_run['files']}
+    cases=[c for c in collection['cases'] if split is None or c['audit']['split']==split]
     report=dict(version=1,engine='signal-audit',status='running',directory=str(output),config=asdict(config),
         cell_report=str(Path(cell_report).resolve()),cell_model=cells_run['model_directory'],
         collection_audit=str(Path(audit_path).resolve()),cases=[],errors=[],
         supervision='A = signal center. All signals in marked cells annotated (user confirmed). Only predicted-cell interiors intersecting unambiguous marked manual cells are supervised. Other regions unknown.',
-        split_policy=collection['split_policy'])
+        split_policy=collection.get('split_policy',collection.get('policy')))
     started=time.monotonic()
-    for number,case in enumerate(collection['cases'],1):
+    for number,case in enumerate(cases,1):
         checkpoint(cancel)
-        emit(dict(kind='progress',phase='Signal annotation audit',current=number-1,total=len(collection['cases']),file=case['image']))
+        emit(dict(kind='progress',phase='Signal annotation audit',current=number-1,total=len(cases),file=case['image']))
         try:
-            source=sources[case['image']]
-            for alias in case['audit']['aliases']:
-                s=sources[alias];stat=Path(alias).stat()
-                if stat.st_size!=s['size'] or stat.st_mtime_ns!=s['mtime_ns']:raise ValueError('Source changed since cell audit.')
-                if s['fingerprint']!=source['fingerprint']:raise ValueError('Aliases differ in raw channels; a new split-safe signal audit is required.')
-                for scene in s['scene_stats']:
-                    st=Path(scene['path']).stat()
-                    if st.st_size!=scene['size'] or st.st_mtime_ns!=scene['mtime_ns']:raise ValueError('Annotations changed since cell audit.')
             row=cell_rows[case['image']]
-            with np.load(row['predictions'],allow_pickle=False) as archive:
-                labels=archive['labels'];metadata=json.loads(str(archive['metadata']))
-            if metadata['fingerprint']!=source['fingerprint']:raise ValueError('Cell predictions do not match source pixels.')
-            scenes=sorted({scene for alias in case['audit']['aliases'] for scene in sources[alias]['scenes']})
-            points=marker_points(scenes)
-            references,_=read_references(Path(case['directory'])/'references.npz')
-            memberships=reference_memberships([p['xyz'] for p in points],references,metadata['origin_xyz'],metadata['spacing_zyx'],config.assignment_tolerance_um)
-            dataset=load_dataset(LibraryEntry(Path(case['image']),Path(case['scene']) if case['scene'] else None))
-            images=[normalized(v) for v in dataset.volumes];membrane=int(metadata['channel'])
-            origin=np.asarray(dataset.center_origin);spacing=np.asarray(dataset.spacing[::-1])
-            points=infer_channels(images,points,membrane,origin,spacing,config)
-            marked={m for group in memberships for m in group}
-            ambiguous={m for point,group in zip(points,memberships) if point['channel'] is None for m in group}
-            usable=marked-ambiguous
-            roi=np.zeros(labels.shape,np.uint8)
-            for ref in usable:
-                box,mask=references[ref];roi[box][mask]=1
-            # Ambiguous overlapping annotations cannot supply false negative labels.
-            for ref in ambiguous:
-                box,mask=references[ref];roi[box][mask]=0
-            roi*=labels>0
-            truth=[]
-            for point,group in zip(points,memberships):
-                point['manual_cells']=group
-                point['cell_id']=int(at_labels(labels,[point['xyz']],metadata['origin_xyz'],metadata['spacing_zyx'])[0])
-                point['usable']=point['channel'] is not None and bool(set(group)&usable) and not bool(set(group)&ambiguous) and point['cell_id']>0
-                if point['usable']:truth.append(point)
-            native=native_labels(labels,metadata,dataset)
-            proposed=[]
-            for channel,image in enumerate(images):
-                if channel==membrane:continue
-                proposed.extend(dict(p,channel=channel) for p in candidates(image,native,spacing,origin,config))
-            # Membership is measured on the source prediction grid to match references.
-            supervised=at_labels(roi,[p['xyz'] for p in proposed],metadata['origin_xyz'],metadata['spacing_zyx'])>0
-            targets=candidate_targets(proposed,truth,supervised,config)
+            prepared=prepare_supervision(case,sources,row,config)
+            source=prepared['source'];metadata=prepared['metadata'];dataset=prepared['dataset']
+            images=prepared['images'];membrane=prepared['membrane'];origin=prepared['origin'];spacing=prepared['spacing']
+            points=prepared['points'];truth=prepared['truth'];native=prepared['native'];labels=prepared['labels']
+            marked=prepared['marked'];ambiguous=prepared['ambiguous'];usable=prepared['usable']
+            proposed,all_candidate_count=supervised_candidates(prepared,config)
+            targets=candidate_targets(proposed,truth,np.ones(len(proposed),bool),config,exclusion_points=points)
             # Keep ambiguous-distance candidates for honest detector evaluation;
             # their -1 targets are ignored only by the training/loss sampler.
-            chosen=np.flatnonzero(supervised)
+            chosen=np.arange(len(proposed))
             directory=output/f'{number:04d}-{Path(case["image"]).stem}';directory.mkdir()
             patches=extract_patches(images,membrane,native,[proposed[i] for i in chosen],origin,spacing,config)
             np.save(directory/'patches.npy',patches);np.save(directory/'targets.npy',targets[chosen])
@@ -226,11 +307,11 @@ def build_audit(cell_report,audit_path,output,config=SignalConfig(),emit=print,c
                 channels=[dict(name=c.name,color=list(c.color)) for c in dataset.metadata.channels],membrane_channel=membrane,
                 origin_xyz=origin.tolist(),spacing_zyx=spacing.tolist(),shape=list(dataset.volumes[0].shape),
                 predicted_cells=int(labels.max()),marked_cells=len(marked),ambiguous_cells=len(ambiguous),supervised_cells=len(usable),
-                markers=points,truth=truth,candidates=selected,all_candidate_count=len(proposed),
+                markers=points,truth=truth,candidates=selected,all_candidate_count=all_candidate_count,
                 positive_patches=int((targets==1).sum()),negative_patches=int((targets==0).sum()),
-                supervised_candidate_count=int(supervised.sum()))
+                supervised_candidate_count=len(proposed))
             _json(directory/'case.json',record);report['cases'].append(record)
-            del patches,images,dataset,native
+            del patches,images,dataset,native,prepared
         except Exception as exc:
             report['errors'].append(dict(image=case['image'],error=str(exc)))
             emit(dict(kind='warning',message=f'{case["image"]}: {exc}'))

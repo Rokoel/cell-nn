@@ -1,0 +1,8 @@
+# Optional separate runtime for experimental direct signal-center models.
+spotiflow==0.6.5
+numpy>=2,<2.4
+h5py>=3.11,<4
+scipy>=1.13,<2
+scikit-image>=0.25,<0.27
+tifffile>=2024.8
+matplotlib>=3.8,<4

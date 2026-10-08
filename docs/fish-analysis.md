@@ -14,8 +14,9 @@ Optional command-line arguments add scans or folders when the app opens.
 
 For another computer, extract the **FISH-Analysis.zip** bundle. It includes the
 application source, native Imaris scene template, the latest center/box detector
-and crop U-Net, and the existing signal network. The previous StarDist and
-boundary checkpoints are preserved for comparison. Both app launchers are
+and crop U-Net, the default signal-center U-Net and optional older/Spotiflow
+signal checkpoints. Setup installs separate TensorFlow and PyTorch environments. The previous StarDist and boundary checkpoints are preserved
+for comparison. Both app launchers are
 included: use `run-analysis` for the complete automatic workflow, or `run-viewer`
 for image exploration and the older classical/StarDist training panels.
 The original FISH dataset and training artifacts are not needed.
@@ -63,14 +64,26 @@ Leave the boundary field empty to use the original StarDist contours; the new
 center/box detector requires a boundary model. See [boundary refinement](boundary-refinement.md) for
 training, safeguards and saved acceptance/fallback information.
 
+An optional **Snap to membrane (experimental)** checkbox under **Models and device**
+adds local cell-channel brightness refinement before signal detection. It searches
+up to 0.30 µm along boundary normals and moves points halfway toward supported
+peaks. Unsafe changes keep their original contours. Original and snapped runs are
+both saved; volume and A–B measurements use the snapped masks when enabled.
+See [membrane refinement](membrane-snap.md) for controls, safeguards and evaluation.
+
 Every non-membrane channel is searched separately, including scans with two signal
 channels. A cell survives when **any** of those channels has at least one accepted
 signal. All accepted signals across those channels are retained and counted
 separately; a cell does not need a signal in every channel.
 
 Model folders and CPU/auto/GPU selection are under **Models and device**.
-The original checkpoints are `models/cells` (StarDist) and `models/signals`.
-The alternative center-and-box detector goes in **Cells** (`models/proposals`)
+The StarDist checkpoint is `models/cells`. The default signal model is
+`models/signals-center-unet`; **Use bundled signal model** restores it even when
+another choice was saved. The previous conservative CNN is preserved at
+`models/signals`, and Spotiflow is available at `models/signals-spotiflow`.
+The new default found 163/228 eligible manual signals: 71.5% recall and 79.9%
+precision. See [direct signal models](signal-centers.md) for the comparison.
+The default center-and-box detector goes in **Cells** (`models/proposals`)
 and requires the crop U-Net in **Boundaries** (`models/refinement`). Its failed
 crops are rejected without a guessed contour. New installations discover this
 pair when bundled; saved model choices are retained. See
@@ -164,3 +177,7 @@ The exporter retains the FISH Imaris 6.3.1 XML profile.
 
 To rebuild the source/model bundle, run
 `.venv/bin/python scripts/package_analysis.py --output artifacts/FISH-Analysis-new`.
+
+The [direct signal-center models](signal-centers.md) predict learned center heatmaps
+without the image candidate finder. The standard setup installs their runtime;
+existing installations should rerun setup when upgrading to v0.4.0.

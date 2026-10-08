@@ -2,6 +2,23 @@
 
 All paths below are relative to the project folder, `/home/rokoel/Documents/cell-nn` on this machine. Keep the entire `model` directory: it contains the checkpoint, architecture, preprocessing, and acceptance settings.
 
+## Bundled models
+
+| Model | Folder | Purpose |
+| --- | --- | --- |
+| Center/box detector | `models/proposals` | Locate cells for the focused Analysis pipeline |
+| Cropped 3D U-Net | `models/refinement` | Draw contours inside the detector's boxes |
+| Previous conservative signal CNN | `models/signals` | Original single-scale finder and September checkpoint |
+| Experimental refreshed signal CNN | `models/signals-refreshed` | Search three spot sizes, classify crops inside the latest predicted cells; higher recall but lower test precision |
+| Default direct-center U-Net | `models/signals-center-unet` | Predict a dense signal-center heatmap without the candidate finder |
+| Experimental Spotiflow | `models/signals-spotiflow` | Upstream 3D heatmap/flow network with masked FISH supervision |
+| Balanced StarDist | `models/cells` | Previous cell detector |
+| Previous boundary U-Net | `models/refinement-base` | Earlier boundary checkpoint |
+
+**Models and device → Use bundled center and crop models**, followed by **Use bundled signal model**, selects the default pipeline in Analysis. Browse to `models/signals-refreshed` to try the experimental signal detector. See [the signal comparison](../reports/signal-refresh/README.md) for measured results. Bundled checksums and training sources are recorded in `models/origins.json`.
+
+## Historical StarDist runs
+
 | Model | Model folder | Run report |
 | --- | --- | --- |
 | Full collection, many detections | [model](../artifacts/full-fish/training/neural-train-20260915-033619-354714/model/) | [report](../artifacts/full-fish/training/neural-train-20260915-033619-354714/report.json) |
@@ -30,4 +47,7 @@ See [conservative training](precision-training.md) and [balanced training](balan
 
 ## Signal detector
 
-The [signal CNN model](../artifacts/signal-fish/training/signal-train-20260919-020312-268747/model/) and its [training report](../artifacts/signal-fish/training/signal-train-20260919-020312-268747/report.json) are separate from the cell models above. It completed 37 epochs, selected epoch 22, and uses score threshold 0.995. Open it through **Find signals / signal training…**, after loading neural cell contours. See the [signal guide](signal-detection.md) for validation scope, centers/counts, and exports.
+The original [signal CNN model](../artifacts/signal-fish/training/signal-train-20260919-020312-268747/model/) and its [training report](../artifacts/signal-fish/training/signal-train-20260919-020312-268747/report.json) are separate from the cell models above. It completed 37 epochs, selected epoch 22, and uses score threshold 0.995; its bundled copy remains `models/signals`. The experimental refreshed checkpoint is `models/signals-refreshed`. Open a model through **Find signals / signal training…**, after loading neural cell contours. See the [signal guide](signal-detection.md) for validation scope, centers/counts, and exports.
+
+The [direct-center comparison](signal-centers.md) describes these optional signal
+models and the separate `setup-spots` runtime required to use them.

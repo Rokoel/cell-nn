@@ -1,8 +1,10 @@
 # Signal detection inside neural cell contours
 
-The first signal network is trained and integrated into the viewer. It finds **signal centers**, reports counts per cell and channel, and saves a classifier score for each detection. Original images and Imaris annotations remain unchanged.
+The signal network finds **signal centers**, reports counts per cell and channel, and saves a classifier score for each detection. An experimental refreshed checkpoint uses training crops from the latest center/box detector and cropped U-Net cell masks. It increased test recall but also false detections. Since v0.4.0, the default is the newer [direct signal-center U-Net](signal-centers.md); this guide documents the preserved candidate-CNN approach. Original images and Imaris annotations remain unchanged.
 
 ## Use the trained model
+
+In **FISH Analysis**, choose **Models and device → Use bundled signal model** to use the default `models/signals-center-unet`, including when another model choice was saved. Browse to `models/signals` for the previous conservative CNN or `models/signals-refreshed` for the experimental candidate CNN. Both apps prefer the default bundled checkpoint for new sessions. Cell detection and contour models remain unchanged by the signal refresh.
 
 1. Restart with `./run-viewer.sh FISH` and open a scan.
 2. Use **Auto-select contours… → Balanced collection**, or open existing neural contours from a saved cell run.
@@ -14,9 +16,25 @@ Open the panel again for **Results / counts**. It shows XYZ coordinates in µm, 
 
 Signals are listed in **Annotations** as “NN signals · cell … · channel …”. Select a group to see scores and use **Focus selected object** to inspect it with surrounding cell context. **Predicted signal centers** controls their visibility independently; the existing measurement-endpoint visibility also applies to point markers. Markers retain their channel colors in 2D and 3D. Loading different cell contours clears the old signal overlay, since cell IDs may have changed.
 
-**Open saved signal run…** opens application results or training graphs. A running CLI training report can be watched. **Train signal detector from audit** starts a new network from the prepared audit, with live loss, validation precision/recall/F0.5 graphs and epoch/batch progress. Training-curve precision/recall use score 0.5; the final selected threshold is separate.
+**Open saved signal run…** opens application results or training graphs. A running CLI training report can be watched. **Train signal detector from audit** starts a new network from the prepared audit, with live loss, validation precision/recall/F0.5 graphs and epoch/batch progress. Precision-based training reports plot metrics at each epoch's validation-selected cutoff; historical reports use score 0.5. The chart titles identify the convention. The final selected threshold is stored with the model.
 
-## Model and measured results
+## Refreshed experiment
+
+All 359 retained scans were audited using the latest predicted contours: 215 training, 73 validation and 71 test. The compact CNN architecture remains the same. The candidate search, sparse crop supervision, training-only hard-negative mining and validation score calibration are implemented. See [the complete comparison, graphs and provenance](../reports/signal-refresh/README.md).
+
+| Same 71 test scans and fixed marked regions | Default model | Refreshed experiment |
+| --- | ---: | ---: |
+| Manual signals matched | 123 / 228 | 132 / 228 |
+| False detections | 18 | 41 |
+| Precision | 87.2% | 76.3% |
+| Recall | 53.9% | 57.9% |
+| Matched-center RMSE | 0.184 µm | 0.184 µm |
+
+The increased false-detection rate conflicts with the preference for confident detections; the refreshed model is therefore an opt-in experiment. Its validation precision was 91.1%, which did not carry over to the test acquisitions. These scores describe annotated intersections with predicted cells, with inferred channel labels, and the historical test fold has been reused during development.
+
+## Original benchmark (historical cell masks)
+
+The following results describe the September checkpoint and its original balanced StarDist cell masks. They use a different eligible reference cohort from the refreshed center/box + U-Net benchmark, so they should not be used as a direct before/after comparison.
 
 - [Model folder](../artifacts/signal-fish/training/signal-train-20260919-020312-268747/model/), including `signal-model.json` and `best.weights.h5`.
 - [Training report](../artifacts/signal-fish/training/signal-train-20260919-020312-268747/report.json), [compact summary](../artifacts/signal-fish/training/signal-train-20260919-020312-268747/summary.json), and [per-scan test scores](../artifacts/signal-fish/training/signal-train-20260919-020312-268747/test-by-scan.csv).
@@ -42,6 +60,8 @@ All four synthetic negative controls passed with the saved checkpoint: blank, co
 
 The user confirmed that A marks a signal, and that all signals within marked cells are annotated. B and C endpoints are not signal positives. Duplicate A coordinates from identical images/alternative scenes are merged. The four previously excluded outlier scans and their aliases remain excluded. The audit verifies that aliases have identical raw-channel fingerprints and retains the original disjoint acquisition splits.
 
+The table below records the original September audit. The refreshed audit and comparison are in [the signal refresh report](../reports/signal-refresh/README.md).
+
 | Split | Scans audited | Unique A markers | Channel assigned | Usable references inside NN cells | Positive candidate patches | Negative candidate patches |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Training | 215 | 1,982 | 1,488 | 487 | 367 | 8,994 |
@@ -54,11 +74,13 @@ For each A marker, the audit compares local peak contrast against a surrounding 
 
 ## Architecture and crop pipeline
 
+The following describes the refreshed experiment. Legacy manifests retain the original finder and training settings.
+
 1. Read native-resolution channels and normalize each channel independently. The original cell contour archive supplies calibrated masks and the membrane channel.
-2. Find permissive difference-of-Gaussians peaks in non-membrane channels, retaining only centers inside a neural cell. Physical filter scales are 0.18/0.50 µm; candidate separation is 0.35 µm. This explicit candidate stage is why blank images cannot produce arbitrary network centers.
+2. Search difference-of-Gaussians peaks at **0.10, 0.18 and 0.28 µm** scales in non-membrane channels, retaining only centers inside a neural cell. Merge candidates across scales with **0.25 µm** physical separation within each cell/channel. Small native-voxel maximum neighborhoods preserve nearby peaks. The brightness cutoff remains 0.025; channel inference retains its separate 0.025 evidence cutoff. Legacy manifests without multiple scales retain their original 0.18/0.50 µm finder and 0.35 µm separation.
 3. Extract a **24³ crop at 0.15 µm spacing** around each candidate. The three inputs are its fluorescence channel, membrane fluorescence, and the candidate's neural cell mask. Surrounding image context remains visible to the model.
-4. A compact Conv3D classifier rejects unsuitable candidates. Balanced positive/negative training batches use flips, XY rotations, intensity variation, and mild noise. Candidates near uncertain matching distances are excluded from the loss but retained for detection evaluation.
-5. Apply the validation-selected score threshold and within-cell/channel suppression. Emit centers and counts, including zero-signal cells.
+4. The same compact Conv3D classifier rejects unsuitable candidates. Balanced positive/negative training batches use flips, XY rotations, intensity variation, and mild noise. Each manual signal supplies at most one positive candidate, selected by one-to-one nearest matching. Extra nearby candidates remain unknown. Every positive crop is visited each epoch. During refinement, half the negative examples come from the highest-scoring 5% of reviewed training negatives, refreshed every five epochs; the rest are sampled uniformly. Candidates within 0.9 µm of any A marker on the same or an uncertain channel remain unknown, including markers outside the predicted cells. Unmarked cells never supply negatives.
+5. Apply the validation-selected score threshold and final within-cell/channel suppression, independently of candidate-search spacing. This removes duplicate outputs while retaining the denser candidate pool for CNN scoring. Emit centers and counts, including zero-signal cells. The cutoff is selected from observed validation scores, with one-to-one matching, rather than a coarse score grid.
 
 The CNN uses 16/32/48 convolution filters, pooling, a 64-unit dense layer and dropout; Adam learning rate is 0.0003. Training allowed 100 epochs with patience 15, 80 batches per epoch, and batch size 32. Model weights, thresholds, acquisition splits and reports remain separate from the Imaris files.
 
@@ -69,24 +91,34 @@ Peak finding followed by thresholding is a standard microscopy baseline describe
 ```bash
 # Audit annotations and cache candidate crops. Use a fresh output folder.
 .venv/bin/python -m fish_viewer.signals --mode audit \
-  --cell-report artifacts/balanced-fish/training/neural-train-20260918-151950-694838/report.json \
-  --collection-audit artifacts/balanced-fish/audit/audit.json \
+  --cell-report artifacts/signal-refresh/data/cell-report.json \
+  --collection-audit artifacts/refinement-fish/audit/audit.json \
+  --config artifacts/signal-refresh/data/frozen-config.json \
   --output /path/to/signal-audit
 
 # Train and evaluate using the fixed acquisition split.
 .venv/bin/python -m fish_viewer.signals --mode train \
-  --audit artifacts/signal-fish/audit/audit.json --output signal_runs --device gpu
+  --audit artifacts/signal-refresh/safe-labels/audit.json \
+  --config reports/signal-refresh/training-config.json \
+  --output signal_runs --device gpu
 
 # Apply inside existing neural contours for a scan.
 .venv/bin/python -m fish_viewer.signals --mode apply \
   --image /path/to/scan.ims --cell-predictions /path/to/contours.npz \
-  --model artifacts/signal-fish/training/signal-train-20260919-020312-268747/model \
+  --model models/signals-refreshed \
   --output signal_runs
 
 # Check the saved checkpoint on synthetic no-signal inputs.
 .venv/bin/python -m fish_viewer.signals --mode controls \
-  --model artifacts/signal-fish/training/signal-train-20260919-020312-268747/model \
+  --model models/signals-refreshed \
   --output /path/to/control-results
 ```
 
 TensorFlow uses the existing optional neural dependencies. The viewer remains independent of TensorFlow; workers run in separate processes. On native Windows, use the environment's `Scripts\python.exe` and CPU/auto device. The first time point is processed. Linux GPU training and the real desktop workflow were tested; native Windows was not tested here.
+
+## Experimental direct centers
+
+The [3D center U-Net and masked Spotiflow comparison](signal-centers.md) adds two
+optional detectors. Their learned center heatmaps replace the image candidate
+finder and use the existing cell-restricted output, channel counts and measurement
+workflow. The optional PyTorch runtime is installed separately from TensorFlow.

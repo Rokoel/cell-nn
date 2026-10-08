@@ -28,7 +28,7 @@ jobs:
           - os: windows-2022
             platform: windows-x64
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 35
+    timeout-minutes: 50
     env:
       QT_QPA_PLATFORM: offscreen
       TF_CPP_MIN_LOG_LEVEL: '2'
@@ -43,12 +43,29 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: pyproject.toml
+          cache-dependency-path: |
+            pyproject.toml
+            requirements-spots.txt
       - name: Install Linux graphics libraries
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libegl1 libopengl0 libgl1 libxcb-cursor0
       - name: Install application and test dependencies
         run: python -m pip install -e ".[neural,test]"
+      - name: Install isolated CPU signal runtime
+        shell: python
+        run: |
+          import os, pathlib, subprocess, venv
+          venv.EnvBuilder(with_pip=True).create('.venv-spots')
+          python = pathlib.Path('.venv-spots', 'Scripts/python.exe' if os.name == 'nt' else 'bin/python').absolute()
+          subprocess.run([str(python), '-m', 'pip', 'install', 'torch==2.9.1', 'torchvision==0.24.1', '--index-url', 'https://download.pytorch.org/whl/cpu'], check=True)
+          subprocess.run([str(python), '-m', 'pip', 'install', '-r', 'requirements-spots.txt', 'pytest'], check=True)
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write(f'FISH_SPOTS_PYTHON={python}\n')
+      - name: Test isolated signal networks
+        shell: python
+        run: |
+          import os, subprocess
+          subprocess.run([os.environ['FISH_SPOTS_PYTHON'], '-m', 'pytest', 'tests/test_signal_centers.py', '-q', '-k', 'not training_graphs'], check=True)
       - name: Check tag and application version
         env:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
@@ -56,7 +73,7 @@ jobs:
       - name: Test readers, geometry, export and Excel
         run: python -m pytest -q -m "not neural and not gui and not integration"
       - name: Verify bundled models on CPU
-        run: python scripts/verify_release.py --require-latest-models
+        run: python scripts/verify_release.py --require-latest-models --with-direct-signals
       - name: Check sparse detector loss on CPU
         run: python -m pytest -q tests/test_proposals.py -m neural
       - name: Build source and model bundle
@@ -73,7 +90,7 @@ jobs:
         run: |
           set -euo pipefail
           cd "dist/FISH-Analysis-${RELEASE_TAG}-${RELEASE_PLATFORM}"
-          python scripts/verify_release.py --require-latest-models
+          python scripts/verify_release.py --require-latest-models --with-direct-signals
       - uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.platform }}

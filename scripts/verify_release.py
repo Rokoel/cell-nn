@@ -4,6 +4,7 @@ import json
 import hashlib
 from pathlib import Path
 import sys
+import subprocess
 
 import numpy as np
 
@@ -19,6 +20,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--require-latest-models', action='store_true',
                         help='Require the current center/box and cropped contour models.')
+    parser.add_argument('--with-direct-signals', action='store_true',
+                        help='Also require the optional PyTorch runtime and test direct-center checkpoints.')
     args = parser.parse_args()
     cells,signals=default_models()
     check_models(cells,signals)
@@ -31,7 +34,7 @@ def main():
         parser.error('The release must include models/origins.json with model checksums.')
     if provenance.exists():
         origins = json.loads(provenance.read_text())
-        if args.require_latest_models and not {'cells', 'signals', 'proposals', 'refinement'}.issubset(origins):
+        if args.require_latest_models and not {'cells', 'signals', 'proposals', 'refinement', 'signals-center-unet'}.issubset(origins):
             parser.error('Missing model provenance for a required checkpoint.')
         for label,info in origins.items():
             for name,digest in info['sha256'].items():
@@ -43,12 +46,25 @@ def main():
     cell_model.load_weights(manifest['checkpoint'])
     probability,distances=cell_model.predict(np.zeros((16,16,16),np.float32),axes='ZYX',verbose=0)
     assert np.isfinite(probability).all() and np.isfinite(distances).all()
-    signal_manifest=json.loads((signals/'signal-model.json').read_text())
+    default_signal_manifest=json.loads((signals/'signal-model.json').read_text())
+    legacy_signals=ROOT/'models/signals'
+    signal_manifest=json.loads((legacy_signals/'signal-model.json').read_text())
     config=SignalConfig(**signal_manifest['config'])
     signal_model=network(tf,config)
-    signal_model.load_weights(signals/signal_manifest['checkpoint'])
+    signal_model.load_weights(legacy_signals/signal_manifest['checkpoint'])
     score=signal_model(np.zeros((1,config.patch_size,config.patch_size,config.patch_size,3),np.float32),training=False).numpy()
     assert score.shape==(1,1) and np.isfinite(score).all()
+    signal_shapes={'signals':list(score.shape)}
+    for label in ('signals-base','signals-refreshed'):
+        baseline_signals=ROOT/'models'/label
+        if not (baseline_signals/'signal-model.json').is_file():continue
+        manifest=json.loads((baseline_signals/'signal-model.json').read_text())
+        baseline_config=SignalConfig(**manifest['config']).validate()
+        baseline_network=network(tf,baseline_config)
+        baseline_network.load_weights(baseline_signals/manifest['checkpoint'])
+        output=baseline_network(np.zeros((1,)+(baseline_config.patch_size,)*3+(3,),np.float32),training=False).numpy()
+        assert output.shape==(1,1) and np.isfinite(output).all()
+        signal_shapes[label]=list(output.shape)
     boundary_shapes = {}
     boundary_models = [('refinement', Path(boundary))] if boundary else []
     baseline = ROOT / 'models/refinement-base'
@@ -73,9 +89,23 @@ def main():
         output=detector(np.zeros((1,)+(config.patch_size,)*3+(1,),np.float32),training=False).numpy()
         assert output.shape==(1,)+(config.patch_size//config.stride,)*3+(7,) and np.isfinite(output).all()
         proposal_shape=list(output.shape)
-    print(json.dumps(dict(status='complete',runtime=info,cell_probability_shape=list(probability.shape),
+    direct_controls = {}
+    if args.with_direct_signals or default_signal_manifest['engine'] in ('signal-center-unet3d', 'signal-spotiflow3d'):
+        import tempfile
+        for label in (('signals-center-unet', 'signals-spotiflow') if args.with_direct_signals else (signals.name,)):
+            folder = ROOT / 'models' / label
+            if not (folder / 'signal-model.json').is_file():
+                parser.error(f'Missing direct-center model: {label}')
+            with tempfile.TemporaryDirectory(prefix='fish-center-check-') as output:
+                process = subprocess.run([sys.executable, '-m', 'fish_viewer.signals', '--mode', 'controls',
+                    '--model', str(folder), '--output', output, '--device', 'cpu'],
+                    cwd=ROOT, text=True, capture_output=True, check=True)
+                report = json.loads(process.stdout.splitlines()[-1])['report']
+                assert report['passed'], f'Empty-signal controls failed for {label}'
+                direct_controls[label] = report
+    print(json.dumps(dict(status='complete',default_signal_model=signals.name,default_signal_engine=default_signal_manifest['engine'],runtime=info,cell_probability_shape=list(probability.shape),
                          signal_score=score.tolist(),boundary_logit_shape=boundary_shapes.get('refinement'),
-                         boundary_models=boundary_shapes,proposal_shape=proposal_shape)))
+                         boundary_models=boundary_shapes,proposal_shape=proposal_shape,signal_models=signal_shapes,direct_signal_controls=direct_controls)))
 
 
 if __name__=='__main__':main()

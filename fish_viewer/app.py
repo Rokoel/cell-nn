@@ -549,7 +549,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 try:
                     from .pipeline.runner import read_prediction
                     surfaces, metadata = read_prediction(archive)
-                    if metadata.get('image_name') != entry.image.name:
+                    image_name=metadata.get('image_name') or Path(str(metadata.get('image','')).replace('\\','/')).name
+                    if image_name != entry.image.name:
                         raise ValueError('The predictions belong to another image.')
                     if level == 0:
                         import hashlib

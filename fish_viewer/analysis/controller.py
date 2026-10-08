@@ -12,7 +12,6 @@ from PySide6 import QtCore
 from ..neural.config import NeuralConfig
 from ..neural.model_picker import read_model
 from ..neural.precision import evidence_preset
-from ..signals.config import SignalConfig
 
 
 STAGES = [('cells', 'Detecting cell contours'), ('signals', 'Finding signals inside cells'),
@@ -22,7 +21,7 @@ STAGES = [('cells', 'Detecting cell contours'), ('signals', 'Finding signals ins
 
 def default_models():
     root = Path(__file__).resolve().parents[2]
-    cells, signals = root / 'models/cells', root / 'models/signals'
+    cells, signals = root / 'models/cells', root / 'models/signals-center-unet'
     if not (cells / 'fish-model.json').exists():
         cells = root / 'artifacts/balanced-fish/training/neural-train-20260918-151950-694838/model'
     if not (signals / 'signal-model.json').exists():
@@ -40,18 +39,31 @@ def default_proposal_model():
     return str(path) if (path / 'proposal-model.json').is_file() else ''
 
 
+def migrate_bundled_defaults(settings):
+    """Upgrade former bundled defaults once, preserving custom model choices."""
+    if settings.value('default_pipeline_version', '') == '0.4.0':
+        return
+    root = Path(__file__).resolve().parents[2]
+    for key, old, new in (
+        ('signal_model', root / 'models/signals', default_models()[1]),
+        ('cell_model', root / 'models/cells', default_proposal_model()),
+    ):
+        value = settings.value(key, '')
+        if value and new and Path(value).resolve() == old.resolve():
+            settings.setValue(key, str(new))
+            if key == 'cell_model' and not settings.value('boundary_model', ''):
+                settings.setValue('boundary_model', default_refinement_model())
+    settings.setValue('default_pipeline_version', '0.4.0')
+
+
 def check_models(cells, signals):
     if (Path(cells) / 'proposal-model.json').is_file():
         from ..proposals.config import read_model as read_proposal_model
         manifest = read_proposal_model(cells)
     else:
         manifest = read_model(cells)
-    info = json.loads((Path(signals) / 'signal-model.json').read_text(encoding='utf-8'))
-    if info.get('engine') != 'signal-cnn3d' or info.get('version') != 1:
-        raise ValueError('Choose a trained FISH signal model folder.')
-    SignalConfig(**info['config']).validate()
-    if not (Path(signals) / info['checkpoint']).is_file():
-        raise ValueError('The signal model checkpoint is missing.')
+    from ..signals.model import read_model as read_signal_model
+    read_signal_model(signals)
     return manifest
 
 
@@ -69,7 +81,7 @@ class AnalysisController(QtCore.QObject):
         self.stopping = False
         self.closing = False
 
-    def start(self, image, output, cells, signals, device='auto', refinement=None):
+    def start(self, image, output, cells, signals, device='auto', refinement=None, membrane_snap=None):
         if self.busy:
             raise ValueError('A scan is already being processed.')
         manifest = check_models(cells, signals)
@@ -78,6 +90,10 @@ class AnalysisController(QtCore.QObject):
         if self.center_box_detector and not self.refinement_model:
             raise ValueError('The center-and-box detector requires a Boundaries model to draw crop contours.')
         self.stages = list(STAGES)
+        self.membrane_snap = None
+        if membrane_snap is not None:
+            from ..refinement.membrane import MembraneConfig
+            self.membrane_snap = asdict(MembraneConfig(**membrane_snap).validate())
         if self.refinement_model:
             from ..refinement.config import read_model as read_refinement_model
             read_refinement_model(self.refinement_model)
@@ -85,6 +101,9 @@ class AnalysisController(QtCore.QObject):
                 self.stages.insert(1, ('refine', 'Refining cell boundaries'))
             else:
                 self.stages[0] = ('cells', 'Finding cell centers and drawing crop contours')
+        if self.membrane_snap:
+            self.stages.insert(next(i for i, s in enumerate(self.stages) if s[0] == 'signals'),
+                               ('snap', 'Snapping contours to membrane peaks'))
         self.image = Path(image).expanduser().resolve()
         if not self.image.is_file():
             raise FileNotFoundError(self.image)
@@ -101,6 +120,7 @@ class AnalysisController(QtCore.QObject):
                           processed_time=0, stages={})
         self.state['refinement_model'] = self.refinement_model
         self.state['cell_detector_engine'] = manifest.get('engine', 'stardist3d')
+        self.state['membrane_snap'] = self.membrane_snap
         self._persist()
         if self.center_box_detector:
             self.busy = True
@@ -200,7 +220,7 @@ class AnalysisController(QtCore.QObject):
             return
         try:
             self.state['stages'][self.stage] = report.get('directory', report.get('image'))
-            if self.stage in ('cells', 'refine'):
+            if self.stage in ('cells', 'refine', 'snap'):
                 if len(report.get('files', [])) != 1 or report.get('failures'):
                     raise ValueError('Cell detection did not produce a complete scan result.')
                 if self.stage == 'cells' and self.refinement_model and not self.center_box_detector:
@@ -211,6 +231,18 @@ class AnalysisController(QtCore.QObject):
                     return
                 if self.stage == 'refine':
                     self.state['refinement_summary'] = report['summary']
+                if self.stage != 'snap' and self.membrane_snap:
+                    snap_config = self.directory / 'membrane-config.json'
+                    snap_config.write_text(json.dumps(self.membrane_snap, indent=2), encoding='utf-8')
+                    self._launch(next(i for i, s in enumerate(self.stages) if s[0] == 'snap'),
+                        ['-m', 'fish_viewer.refinement.membrane',
+                         '--cells-report', str(Path(report['directory']) / 'report.json'),
+                         '--output', str(self.directory / 'work'),
+                         '--config-file', str(snap_config),
+                         '--cancel-file', str(self.cancel_file)])
+                    return
+                if self.stage == 'snap':
+                    self.state['membrane_snap_summary'] = report['summary']
                 args = ['-m', 'fish_viewer.signals', '--mode', 'apply', '--image', str(self.image),
                         '--cell-predictions', report['files'][0]['predictions'], '--model', self.signal_model,
                         '--output', str(self.directory / 'work'), '--device', self.device,

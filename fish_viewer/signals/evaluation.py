@@ -4,13 +4,22 @@ from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
 
 
+def detection_separation(config):
+    return config.detection_separation_um or config.candidate_separation_um
+
+
 def suppress(rows,scores,threshold,separation):
-    selected=[]
+    selected=[];bins={}
     for index in np.argsort(-np.asarray(scores),kind='stable'):
         if scores[index]<threshold:continue
         row=rows[index]
-        if any(old['channel']==row['channel'] and old['cell_id']==row['cell_id'] and
-            np.linalg.norm(np.asarray(old['xyz'])-row['xyz'])<separation for old in selected):continue
+        xyz=np.asarray(row['xyz'])
+        if separation>0:
+            key=tuple(np.floor(xyz/separation).astype(int))
+            neighbors=(point for dz in (-1,0,1) for dy in (-1,0,1) for dx in (-1,0,1)
+                for point in bins.get((row['channel'],row['cell_id'],key[0]+dx,key[1]+dy,key[2]+dz),()))
+            if any(np.linalg.norm(point-xyz)<separation for point in neighbors):continue
+            bins.setdefault((row['channel'],row['cell_id'],*key),[]).append(xyz)
         selected.append(dict(row,score=float(scores[index])))
     return selected
 
@@ -42,7 +51,7 @@ def summarize(rows):
 def evaluate_cases(cases,probabilities,threshold,config):
     rows=[];counts=[];by_channel={}
     for case,scores in zip(cases,probabilities):
-        selected=suppress(case['candidates'],scores,threshold,config.candidate_separation_um)
+        selected=suppress(case['candidates'],scores,threshold,detection_separation(config))
         metric=evaluate_points(selected,case['truth'],config.match_radius_um);rows.append(metric)
         groups={(r['cell_id'],r['channel']) for r in selected+case['truth']}
         for cell_id,channel in groups:
@@ -59,14 +68,46 @@ def evaluate_cases(cases,probabilities,threshold,config):
 
 
 def select_threshold(cases,probabilities,config):
-    table=[]
-    for threshold in np.r_[np.arange(.05,1,.025),.99,.995]:
-        metrics=evaluate_cases(cases,probabilities,float(threshold),config)
-        table.append(dict(threshold=float(threshold),metrics=metrics))
+    # Suppression is greedy in score order: lowering the cutoff only appends
+    # detections. Sweep the observed scores and maintain maximum bipartite
+    # matching, then run distance-minimizing matching at the selected cutoff.
+    # This avoids missing useful cutoffs between values of a coarse score grid.
+    events=[];neighbors=[];owners=[]
+    references=sum(len(c['truth']) for c in cases)
+    for index,(case,scores) in enumerate(zip(cases,probabilities)):
+        selected=suppress(case['candidates'],scores,0.,detection_separation(config))
+        compatible=[]
+        for point in selected:
+            compatible.append([i for i,ref in enumerate(case['truth']) if point['channel']==ref['channel']
+                and point['cell_id']==ref['cell_id'] and np.linalg.norm(np.asarray(point['xyz'])-ref['xyz'])<=config.match_radius_um])
+        neighbors.append(compatible);owners.append({})
+        events.extend((p['score'],index,i) for i,p in enumerate(selected))
+    events.sort(key=lambda item:-item[0])
+    def augment(case,prediction,visited):
+        for ref in neighbors[case][prediction]:
+            if ref in visited:continue
+            visited.add(ref)
+            if ref not in owners[case] or augment(case,owners[case][ref],visited):
+                owners[case][ref]=prediction;return True
+        return False
+    table=[];tp=0;predictions=0;position=0
+    while position<len(events):
+        threshold=events[position][0]
+        while position<len(events) and events[position][0]==threshold:
+            _,case,prediction=events[position]
+            tp+=int(augment(case,prediction,set()));predictions+=1;position+=1
+        metrics=summarize([dict(tp=tp,fp=predictions-tp,fn=references-tp,distances_um=[])])
+        table.append(dict(threshold=threshold,metrics=metrics))
+    if not table:
+        table=[dict(threshold=1.,metrics=evaluate_cases(cases,probabilities,1.,config))]
     qualified=[row for row in table if row['metrics']['predictions']>=5 and (row['metrics']['precision'] or 0)>=config.target_precision]
     if qualified:
         best=max(qualified,key=lambda row:(row['metrics']['recall'] or 0,row['metrics']['precision'],row['threshold']))
     else:
         best=max(table,key=lambda row:(row['metrics']['f05'],row['metrics']['precision'] or 0,row['threshold']))
-    return dict(selected=best,target_precision=config.target_precision,target_met=bool(qualified),candidates=table,
-        policy='Validation only: maximize recall at target precision with at least 5 detections; otherwise maximize F0.5. Matching within same cell and channel at declared physical tolerance.')
+    selected=dict(threshold=best['threshold'],metrics=evaluate_cases(cases,probabilities,best['threshold'],config))
+    # Keep the complete computation exact while limiting report/manifest size.
+    retained=sorted(set(np.linspace(0,len(table)-1,min(512,len(table))).astype(int).tolist()+[table.index(best)]))
+    return dict(selected=selected,target_precision=config.target_precision,target_met=bool(qualified),
+        evaluated_score_thresholds=len(table),candidates=[table[i] for i in retained],
+        policy='Validation observed scores only: maximize recall at target precision with at least 5 detections; otherwise maximize F0.5. Matching within same cell and channel at declared physical tolerance. Stored curve may be downsampled; selection is exact.')

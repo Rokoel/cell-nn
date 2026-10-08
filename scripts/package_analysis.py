@@ -4,6 +4,7 @@ import hashlib
 import importlib.metadata
 import json
 from pathlib import Path
+import re
 import shutil
 import sys
 
@@ -26,12 +27,25 @@ def main():
                     ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     for name in ('pyproject.toml', 'run_analysis.py', 'run-analysis.sh', 'run-analysis.bat',
                  'run_viewer.py', 'run-viewer.sh', 'run-viewer.bat',
-                 'setup-analysis.sh', 'setup-analysis.bat'):
+                 'setup-analysis.sh', 'setup-analysis.bat', 'setup-spots.sh', 'setup-spots.bat', 'requirements-spots.txt'):
         shutil.copy2(ROOT / name, destination / name)
-    shutil.copy2(ROOT / 'docs/fish-analysis.md', destination / 'README.md')
+    guide=(ROOT / 'docs/fish-analysis.md').read_text(encoding='utf-8')
+    # This guide normally lives under docs/; make its links work from the ZIP root.
+    def guide_link(match):
+        target=match[1]
+        if target.startswith('../'):
+            target=target[3:]
+        elif '/' not in target and target.endswith('.md'):
+            target='docs/'+target
+        return ']('+target+')'
+    (destination / 'README.md').write_text(re.sub(r'\]\(([^)]+)\)',guide_link,guide),encoding='utf-8')
     (destination / 'scripts').mkdir()
     for name in ('verify_release.py', 'package_analysis.py', 'benchmark_measurements.py', 'smoke_refinement.py',
-                 'calibrate_boundary_model.py', 'compare_refined_boundaries.py'):
+                 'calibrate_boundary_model.py', 'compare_refined_boundaries.py', 'audit_signal_candidates.py',
+                 'refresh_signal_data.py', 'train_refreshed_signals.py', 'compare_signal_models.py', 'calibrate_signal_model.py',
+                 'calibrate_membrane_snap.py', 'build_signal_centers.py', 'train_signal_centers.py',
+                 'evaluate_signal_centers.py', 'report_signal_centers.py', 'plot_signal_centers.py',
+                 'evaluate_center_measurements.py'):
         shutil.copy2(ROOT / 'scripts' / name, destination / 'scripts' / name)
     shutil.copy2(ROOT / 'scripts/calibrate_cell_proposals.py', destination / 'scripts/calibrate_cell_proposals.py')
     shutil.copy2(ROOT / 'scripts/evaluate_cell_centers.py', destination / 'scripts/evaluate_cell_centers.py')
@@ -39,7 +53,7 @@ def main():
     shutil.copy2(ROOT / 'scripts/evaluate_cell_contours.py', destination / 'scripts/evaluate_cell_contours.py')
     shutil.copy2(ROOT / 'scripts/check_cell_crop_controls.py', destination / 'scripts/check_cell_crop_controls.py')
     (destination / 'docs').mkdir()
-    for name in ('fish-analysis.md', 'imaris-export.md', 'signal-detection.md', 'neural-training.md'):
+    for name in ('fish-analysis.md', 'imaris-export.md', 'signal-detection.md', 'neural-training.md', 'models.md'):
         shutil.copy2(ROOT / 'docs' / name, destination / 'docs' / name)
     for name in ('measurement-accuracy.md', 'releasing.md', 'release-notes.md'):
         if (ROOT / 'docs' / name).exists():
@@ -48,6 +62,8 @@ def main():
         shutil.copy2(ROOT / 'docs/boundary-refinement.md', destination / 'docs/boundary-refinement.md')
     if (ROOT / 'docs/center-box-contours.md').exists():
         shutil.copy2(ROOT / 'docs/center-box-contours.md', destination / 'docs/center-box-contours.md')
+    if (ROOT / 'docs/membrane-snap.md').exists():
+        shutil.copy2(ROOT / 'docs/membrane-snap.md', destination / 'docs/membrane-snap.md')
     reports = ROOT / 'reports/measurement-accuracy'
     if reports.exists():
         shutil.copytree(reports, destination / 'reports/measurement-accuracy')
@@ -57,8 +73,30 @@ def main():
     proposal_reports = ROOT / 'reports/center-box-contours'
     if proposal_reports.exists():
         shutil.copytree(proposal_reports, destination / 'reports/center-box-contours')
+    signal_reports = ROOT / 'reports/signal-refresh'
+    if signal_reports.exists():
+        shutil.copytree(signal_reports, destination / 'reports/signal-refresh')
+    membrane_reports = ROOT / 'reports/membrane-snap'
+    if membrane_reports.exists():
+        shutil.copytree(membrane_reports, destination / 'reports/membrane-snap')
+    if (ROOT / 'docs/signal-centers.md').exists():
+        shutil.copy2(ROOT / 'docs/signal-centers.md', destination / 'docs/signal-centers.md')
+    if (ROOT / 'reports/signal-centers').exists():
+        shutil.copytree(ROOT / 'reports/signal-centers', destination / 'reports/signal-centers')
     provenance = {}
-    model_sources = [('cells', cells), ('signals', signals)]
+    model_sources = [('cells', cells), ('signals', ROOT / 'models/signals')]
+    baseline_signals = ROOT / 'models/signals-base'
+    if (baseline_signals / 'signal-model.json').is_file():
+        model_sources.append(('signals-base', baseline_signals))
+    refreshed_signals = ROOT / 'models/signals-refreshed'
+    if (refreshed_signals / 'signal-model.json').is_file():
+        model_sources.append(('signals-refreshed', refreshed_signals))
+    for label in ('signals-center-unet', 'signals-spotiflow'):
+        source = ROOT / 'models' / label
+        if (source / 'signal-model.json').is_file():
+            from fish_viewer.signals.model import read_model as read_signal_model
+            read_signal_model(source)
+            model_sources.append((label, source))
     boundary = default_refinement_model()
     if boundary:
         from fish_viewer.refinement.config import read_model

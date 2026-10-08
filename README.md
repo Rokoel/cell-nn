@@ -7,10 +7,10 @@ to each cell border, and saves Imaris files and CSVs automatically. See the
 [FISH Analysis guide](docs/fish-analysis.md) for setup, controls, models and output files.
 
 The latest cell pipeline uses a **tiny 3D center/box detector → cropped 3D U-Net**
-with the existing signal network. Choose **Models and device → Use bundled center
+with the new **3D signal-center U-Net** as the default signal network. Choose **Models and device → Use bundled center
 and crop models** in Analysis. On 71 test scans it matched 314/508 complete manual
 cells (61.8%); retained matched cells had 6.98% volume MAPE and matched signals
-had 0.138 µm distance MAE. See [the evaluation report](reports/center-box-contours/README.md)
+had 0.138 µm distance MAE in the earlier evaluation using the original signal checkpoint. See [the evaluation report](reports/center-box-contours/README.md)
 for matching rules, paired comparisons and limitations. Linux/Windows releases
 include both apps, the latest models, and previous checkpoints for comparison.
 
@@ -24,7 +24,9 @@ See [saved models and their locations](docs/models.md) to choose between the ful
 
 Open a scan and click **Auto-select contours…** below its name to choose a model and display its generated contours automatically. This workflow ignores roundness and elongation limits while requiring visible boundary evidence. **Open saved run…** is beside it and also above the processing tabs and in Results. The viewer and processing panels scroll vertically on smaller screens. See [automatic contours and reports](docs/auto-contours.md), including the collection prepared for future training without shape curation.
 
-After loading neural cell contours, click **Find signals / signal training… → Run** to detect signal centers inside those cells. The trained 3D signal CNN provides per-cell/channel counts, detection scores, CSV exports, and 2D/3D markers. It uses A annotations and excludes uncertain channel labels from supervision. See [signal detection](docs/signal-detection.md) for the model, training graphs, and scoped test results: **89.2% precision / 51.4% recall** in eligible annotated regions inside neural cells.
+FISH Analysis also offers **Models and device → Snap to membrane (experimental)**: bounded local brightness refinement of the best center/crop model's contours. It preserves the original run and uses the refined masks for volumes and A–B distances. On 314 fixed manual test matches, volume error fell from 9.63% to 9.27%; distance accuracy barely changed. See [usage](docs/membrane-snap.md) and [evaluation](reports/membrane-snap/README.md).
+
+After loading neural cell contours, click **Find signals / signal training… → Run** to detect signal centers inside those cells. A refreshed 3D signal CNN was trained on the latest predicted masks with a finder that searches three spot sizes. On the same test regions it found 132/228 manual signals versus 123/228, but precision fell from 87.2% to 76.3%. The previous checkpoint remains available in `models/signals`; the default is now `models/signals-center-unet`, which found 163/228 references (71.5% recall, 79.9% precision). Both provide per-cell/channel counts, scores, CSV exports and 2D/3D markers. See [signal detection](docs/signal-detection.md) and [the fixed-mask comparison](reports/signal-refresh/README.md).
 
 **Scan workflow / Export Imaris…** runs cell and signal detection, keeps cells containing signals, and exports an unchanged `.ims` image plus an `.imx` scene. Open the `.imx` in Imaris with its matching `.ims` beside it. Exports now use the complete Imaris 6.3.1 structure from FISH; re-export earlier results to apply the compatibility fixes. See [Imaris export and annotation-free test files](docs/imaris-export.md) for validation and current limits.
 
@@ -140,3 +142,7 @@ Inspect a dataset without launching Qt:
 The code separates data models, read-only image access, scene parsing, views, and GUI controls in `fish_viewer/`. This allows later training-data extraction to use the readers without starting the GUI.
 
 Format reference: [Oxford Instruments' Imaris file format description](https://imaris.oxinst.com/support/imaris-file-format). Rendering references: [PyVista volume rendering](https://docs.pyvista.org/examples/02-plot/volume_rendering.html) and [Qt for Python](https://doc.qt.io/qtforpython-6/).
+
+Experimental direct signal-center models (small 3D U-Net and masked Spotiflow)
+can be selected in either app after installing the separate `setup-spots` runtime.
+See [setup, supervision and comparison](docs/signal-centers.md).
