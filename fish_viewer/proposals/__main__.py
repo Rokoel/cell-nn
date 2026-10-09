@@ -19,7 +19,9 @@ def main():
             env['LD_LIBRARY_PATH']=os.pathsep.join(map(str,libraries))+os.pathsep+env.get('LD_LIBRARY_PATH','')
             os.execve(sys.executable,[sys.executable,'-m','fish_viewer.proposals',*sys.argv[1:]],env)
     p=argparse.ArgumentParser(description='Tiny 3D cell-center/box detector and crop contour pipeline.')
-    p.add_argument('--mode',choices=['train','detect','apply'],required=True);p.add_argument('--audit',type=Path)
+    p.add_argument('--mode',choices=['train','detect','apply','recover'],required=True);p.add_argument('--audit',type=Path)
+    p.add_argument('--recovery-config',type=Path)
+    p.add_argument('--cells-report',type=Path);p.add_argument('--signal-report',type=Path)
     p.add_argument('--patches',type=Path);p.add_argument('--output',type=Path,required=True)
     p.add_argument('--model',type=Path);p.add_argument('--boundary-model',type=Path)
     p.add_argument('--image',type=Path);p.add_argument('--split',choices=['training','validation','test'])
@@ -39,12 +41,17 @@ def main():
             p.error('Detection requires --model and --image or --audit with --split.')
         from .inference import detect
         r=detect(args.model,args.output,args.device,emit,cancel,image=args.image,audit=args.audit,split=args.split,threshold=args.threshold)
+    elif args.mode=='recover':
+        if not args.cells_report or not args.signal_report:p.error('Recovery requires both reports.')
+        from .inference import recover_guided
+        r=recover_guided(args.cells_report,args.signal_report,args.output,args.device,emit,cancel)
     else:
         if not args.model or not args.boundary_model or not (args.image or (args.audit and args.split)):
             p.error('Application requires both models and --image or --audit with --split.')
         from .inference import apply
         r=apply(args.model,args.boundary_model,args.output,args.device,emit,cancel,
-                image=args.image,audit=args.audit,split=args.split,threshold=args.threshold)
+                image=args.image,audit=args.audit,split=args.split,threshold=args.threshold,
+                recovery=json.loads(args.recovery_config.read_text()) if args.recovery_config else None)
     return 0 if r['status']=='complete' else 1
 
 

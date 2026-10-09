@@ -65,7 +65,7 @@ def apply(image, scene, cell_predictions, model_directory, output, device_name='
         report['fingerprint'] = metadata['fingerprint']
         report['channels'] = [dict(name=c.name, color=list(c.color)) for c in dataset.metadata.channels]
         membrane = int(metadata['channel']); report['membrane_channel'] = membrane
-        for field, name in [('detector', 'cell_detector'), ('refinement', 'boundary_refinement'), ('membrane_snap', 'membrane_snap')]:
+        for field, name in [('detector', 'cell_detector'), ('refinement', 'boundary_refinement'), ('membrane_snap', 'membrane_snap'), ('cell_recovery', 'cell_recovery')]:
             if metadata.get(field): report[name] = metadata[field]
         images = [normalized(v) for v in dataset.volumes]
         origin = np.asarray(dataset.center_origin); spacing = np.asarray(dataset.spacing[::-1])

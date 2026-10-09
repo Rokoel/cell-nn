@@ -25,6 +25,8 @@ def validated_result(path, cancel=None):
     with np.load(report['cell_predictions'], allow_pickle=False) as archive:
         labels = archive['labels'].copy()
         metadata = json.loads(str(archive['metadata']))
+    if metadata.get('prediction_role') == 'candidate_only':
+        raise ValueError('Provisional recovery masks cannot be filtered, measured or exported as cells.')
     if (metadata.get('version') != 1 or ('rays' not in metadata.get('config', {})
             and metadata.get('detector', {}).get('engine') != 'cell-center-box3d')
             or labels.ndim != 3 or not labels.size or not np.issubdtype(labels.dtype, np.integer)

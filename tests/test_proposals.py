@@ -130,3 +130,23 @@ def test_proposal_training_graphs_and_batch_progress(qapp,tmp_path):
                                 validation=dict(loss=.9,box_mae_um=.5)))
         assert len(dialog.axes[1].lines)==2
     finally:dialog.close();qapp.processEvents()
+
+
+@pytest.mark.gui
+def test_controller_exposes_recovery_stages_and_persists_worker_configuration(qapp,tmp_path,monkeypatch):
+    import json
+    import fish_viewer.analysis.controller as module
+    import fish_viewer.signals.model as signals
+    import fish_viewer.refinement.config as boundaries
+    monkeypatch.setattr(module,'check_models',lambda *a:dict(engine='cell-center-box3d'))
+    monkeypatch.setattr(signals,'read_model',lambda *a:dict(engine='signal-center-unet3d'))
+    monkeypatch.setattr(boundaries,'read_model',lambda *a:{})
+    image=tmp_path/'scan.ims';image.write_bytes(b'sample')
+    controller=module.AnalysisController();launched=[]
+    monkeypatch.setattr(controller,'_launch',lambda i,args:launched.append((i,args)))
+    controller.start(image,tmp_path/'runs',tmp_path/'centers',tmp_path/'signals',refinement=tmp_path/'boundary',recovery={})
+    assert [s[0] for s in controller.stages]==['cells','guide_signals','recover','signals','filter','measure','export']
+    assert '--recovery-config' in launched[0][1]
+    config=json.loads(controller.recovery_path.read_text())
+    assert config['signal_score']==.9 and config['signal_search_um']==.6
+    assert controller.state['cell_recovery']==config

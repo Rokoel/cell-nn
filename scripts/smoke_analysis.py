@@ -21,6 +21,7 @@ parser.add_argument('--boundary-model', type=Path, help='Exercise the optional s
 parser.add_argument('--cell-model', type=Path, help='Select StarDist or the center-and-box detector')
 parser.add_argument('--signal-model', type=Path, help='Exercise a selected signal checkpoint')
 parser.add_argument('--membrane-snap', action='store_true', help='Exercise local membrane peak refinement')
+parser.add_argument('--cell-recovery', action='store_true', help='Exercise local membrane, retry and signal-guided cell recovery')
 args = parser.parse_args()
 if args.package_root:
     sys.path.insert(0, str(args.package_root.resolve()))
@@ -73,6 +74,7 @@ def exercise():
         window.output.setText(str((output / 'runs').resolve()))
         window.device.setCurrentText(args.device)
         window.membrane_snap.setChecked(args.membrane_snap)
+        window.cell_recovery.setChecked(args.cell_recovery)
         if args.membrane_snap:
             window.options_button.setChecked(True)
         if args.boundary_model:
@@ -92,6 +94,10 @@ def exercise():
         wait(lambda: not window.running and not window.loading)
         assert window.result_path
         report = window.result_report
+        if args.cell_recovery:
+            stages=json.loads(window.result_path.read_text())['stages']
+            assert 'guide_signals' in stages and 'recover' in stages
+            assert report['cell_recovery']['signal_guided_summary']
         if args.membrane_snap:
             assert report['membrane_snap']['cells'], 'Missing membrane peak diagnostics'
             assert 'snap' in json.loads(window.result_path.read_text())['stages']

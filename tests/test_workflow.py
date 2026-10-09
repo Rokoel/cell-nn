@@ -60,6 +60,18 @@ def test_filter_uses_real_centers_preserves_ids_and_sources(signal_result, tmp_p
     assert report['points'] == source['points']  # Includes centers on the image/cell boundary.
 
 
+def test_provisional_recovery_masks_cannot_enter_final_workflow(signal_result,tmp_path):
+    report=json.loads(signal_result.read_text())
+    path=Path(report['cell_predictions'])
+    with np.load(path) as data:
+        labels=data['labels'];metadata=json.loads(str(data['metadata']))
+    metadata['prediction_role']='candidate_only'
+    np.savez_compressed(path,labels=labels,metadata=np.array(json.dumps(metadata)))
+    with pytest.raises(ValueError,match='Provisional recovery masks'):
+        filter_result(signal_result,tmp_path/'recovery-export')
+    assert not (tmp_path/'recovery-export').exists()
+
+
 @pytest.mark.parametrize('damage', ['fingerprint', 'image', 'calibration', 'outside', 'wrong_cell', 'duplicate', 'membrane'])
 def test_rejects_mismatched_annotations_before_writing(signal_result, tmp_path, damage):
     report = json.loads(signal_result.read_text())

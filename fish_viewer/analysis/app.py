@@ -136,6 +136,11 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.membrane_shift.setEnabled(self.membrane_snap.isChecked())
         self.membrane_snap.toggled.connect(self.membrane_shift.setEnabled)
         form.addRow('Membrane search radius', self.membrane_shift)
+        self.cell_recovery = QtWidgets.QCheckBox('Recover missed cells (experimental)')
+        self.cell_recovery.setChecked(str(self.settings.value('cell_recovery', 'false')).lower() == 'true')
+        self.cell_recovery.setToolTip('Check local membrane contrast, retry uncertain contours, then use confident signals '
+                                     'to recheck rejected cells. Adds processing time; precision is still being evaluated.')
+        form.addRow(self.cell_recovery)
         self.boundary_training_button = QtWidgets.QPushButton('Train boundary model…')
         self.boundary_training_button.clicked.connect(self.train_boundaries)
         form.addRow(self.boundary_training_button)
@@ -452,6 +457,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.settings.setValue('device', self.device.currentText())
         self.settings.setValue('membrane_snap', self.membrane_snap.isChecked())
         self.settings.setValue('membrane_shift_um', self.membrane_shift.value())
+        self.settings.setValue('cell_recovery', self.cell_recovery.isChecked())
         self.sync_buttons()
         self.next_scan()
 
@@ -472,7 +478,8 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         try:
             self.controller.start(self.active_image, self.output.text(), self.cell_model.text(),
                                   self.signal_model.text(), self.device.currentText(), self.boundary_model.text().strip() or None,
-                                  membrane_snap=dict(max_shift_um=self.membrane_shift.value()) if self.membrane_snap.isChecked() else None)
+                                  membrane_snap=dict(max_shift_um=self.membrane_shift.value()) if self.membrane_snap.isChecked() else None,
+                                  recovery={} if self.cell_recovery.isChecked() else None)
         except Exception as exc:
             self.failed(str(exc))
 

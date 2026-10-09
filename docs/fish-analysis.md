@@ -54,6 +54,27 @@ the existing viewer. Windows and Linux launchers use the same application code.
    Older saved analyses also support Excel export; their mesh volumes are computed
    when opened.
 
+Under **Models and device**, **Recover missed cells (experimental)** enables
+three additional checks for the bundled center/box and crop models:
+
+- Local membrane contrast and continuity across slices can support dim cells
+  that fail the original fixed brightness checks. Noise is estimated from the
+  unsmoothed image so smoothing cannot turn a noisy region into convincing evidence.
+- Rejected candidates are retried with larger crops and small seed shifts.
+  Retry recovery requires agreement between image-supported NN contours.
+- The selected center U-Net or Spotiflow searches provisional candidate masks
+  and a 0.6 µm band around them. Signals scoring at least 0.9 can trigger another
+  contouring attempt. A signal must be inside the final accepted contour.
+
+The recovery pass preserves baseline contours, rejects empty regions and
+overlapping candidates, and never exports provisional search masks as cells.
+Final signal detection runs again on accepted contours before filtering and
+distance measurement. All detected signal channels are considered. It adds two
+visible progress stages and records candidate evidence and retry diagnostics
+in the saved JSON reports; Excel still contains only the two measurement lists.
+Recovery is off initially while its precision is evaluated. Unmarked cells
+remain unknown, so unmatched predictions cannot by themselves measure precision.
+
 The five steps run automatically: cell contours → signals inside those cells →
 remove cells with zero signals → create B points and A–B lines → export. Saved
 model thresholds are reused. Roundness and elongation limits remain disabled;
