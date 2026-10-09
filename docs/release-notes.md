@@ -1,59 +1,80 @@
-# FISH Analysis v0.4.0
+# FISH Analysis v0.4.1
 
-The automatic pipeline now defaults to the best center/box cell detector
-(`models/proposals`), cropped contour U-Net (`models/refinement`), and the new
-3D signal-center U-Net (`models/signals-center-unet`). Contour checkpoints and
-thresholds are unchanged. Experimental membrane snapping remains off by default.
-Former built-in defaults migrate once; custom model selections are preserved.
+The default pipeline now combines:
 
-Both Linux and Windows bundles include both desktop apps, all eight neural model
-folders, model checksums, reports, and setup/launch scripts. Standard setup now
-installs the separate CPU PyTorch environment alongside TensorFlow. Compatible
-Linux NVIDIA installations can opt into CUDA PyTorch through `FISH_TORCH_INDEX`.
-Previous signal CNNs, StarDist, older contour U-Net and Spotiflow remain selectable.
-These are Python source/model bundles; Python 3.12 and internet access for initial
-setup are required. GitHub Actions verifies tests and all checkpoints on CPU on
-both platforms before publishing archives and SHA256SUMS.txt.
+- **Cells:** `models/proposals` — 3D center/box detector.
+- **Boundaries:** `models/refinement-bias-candidate` — surface-trained crop 3D U-Net,
+  selected epoch 5, cutoff 0.55, 2 µm padding and 64³ input.
+- **Signals:** `models/signals-center-unet` — direct signal-center heatmap U-Net.
 
-## Latest model metrics
+The previous contour model remains at `models/refinement`. Former bundled model
+selections migrate once; custom choices are preserved. Experimental membrane
+snapping remains off by default. Linux and Windows bundles include both desktop
+apps, all nine model folders, reports/graphs, setup/launch scripts and model
+checksums. Python 3.12 and internet access for initial setup are required.
 
-On the fixed 71-scan test split, using the same predicted cells and scored manual
-regions (228 eligible manual A points):
+## Latest contour and distance metrics
 
-| Signal model | Matched signals | Precision | Recall | Matched center RMSE |
-| --- | ---: | ---: | ---: | ---: |
-| **Default signal-center U-Net** | **163/228** | **79.9%** | **71.5%** | **0.147 µm** |
-| Previous conservative CNN | 123/228 | 87.2% | 53.9% | 0.184 µm |
-| Optional Spotiflow | 148/228 | 81.8% | 64.9% | 0.170 µm |
+All 71 test scans were processed after freezing the validation model and cutoff.
+The following paired comparisons include all outliers:
 
-The U-Net increases recall, with 41 unmatched scored detections versus 18 for the
-previous CNN. Unknown/unmarked regions are excluded from scoring and supervision.
-Signal channels are inferred separately; all accepted signals inside predicted
-cells count, including centers on boundaries. Cells with no signals are removed.
+| Measure | Previous contour model | New contour model |
+| --- | ---: | ---: |
+| Volume MAPE, 314 fixed matched cells | 9.63% | **7.98%** |
+| Median absolute volume percentage error, 314 cells | 6.36% | **5.50%** |
+| Mean signed volume error, 314 cells | −5.78% | **−4.26%** |
+| Mean symmetric surface disagreement | 0.159 µm | **0.146 µm** |
+| Volume MAPE, 150 fixed signal-containing matched cells | 7.88% | **5.71%** |
+| Distance MAE, 140 fixed U-Net signal centers | 0.129 µm | **0.112 µm** |
+| Distance RMSE, same 140 centers | 0.177 µm | **0.153 µm** |
+| Median absolute relative distance error | 22.29% | **19.08%** |
 
-For the default U-Net's 140 matched signals with valid manual A/B comparisons,
-signal-to-border distance MAE is **0.129 µm**, RMSE **0.177 µm**, and median absolute
-percentage error **22.3%**. Acquisition-group bootstrap 95% MAE interval is
-0.103–0.157 µm. These are border-distance errors, distinct from center localization.
+The acquisition-group bootstrap 95% interval for volume MAPE improvement is
+**1.08–2.25 percentage points**; for distance MAE improvement it is
+**0.006–0.033 µm**. Undersizing is reduced, not eliminated.
 
-The unchanged contour pipeline matched **314/508** complete manual cells (61.8%).
-Its historical signal-retained 116-cell subset had **6.98% mean absolute volume
-percentage error**; 65 cells shared with the older contour pipeline had 5.17%.
-Across all 314 matched complete cells before signal filtering, volume MAPE is
-**9.63%** (median 6.36%). With the new U-Net, the 150 matched cells retained by
-signals in the scored regions have **7.88% volume MAPE**. These are different
-cohorts: the roughly 6% result does not apply to every cell or to the new retained
-subset. All figures include outliers. The test split was reused during experiments,
-so results are exploratory rather than independent confirmation.
+All 314 original manual matches remain at IoU ≥0.5. The paired experiment keeps
+all 4,513 baseline cell identities, applies 4,384 guarded border edits, and retains
+129 original masks when an edit fails. Fresh app inference uses its normal
+rejection/neighbor rules and does not automatically fall back to the old model.
+These are conditional fixed-cell border comparisons, **not a complete fresh-run
+detection benchmark**. Signal centers are frozen, and one center outside its new
+mask remains scored and flagged. The live app keeps signals only when their
+centers lie inside a predicted cell. No roundness constraint is imposed.
 
-Reports, plots, per-cell/per-signal comparisons and matching rules are bundled in
-`reports/center-box-contours` and `reports/signal-centers`, including
-`reports/signal-centers/measurements`.
+Training visited all 1,493 complete marked training cells per epoch, with actual
+predicted crops for matched cells. Surface loss and production-like training
+crops were changed together; the gain cannot be attributed to surface loss alone.
+Asymmetric-loss and residual-correction trials failed to improve their parent
+and are not defaults. Model selection used validation data only; the historical
+test split has been reused in earlier experiments, so results remain exploratory.
 
-## Analysis and exports
+## Signal detection metrics
 
-The existing workflow remains: cell contours → signals → remove empty cells →
-nearest surface B points and A–B lines → Imaris, CSV and Excel. Excel includes cell
-volumes, per-channel counts, signal scores, coordinates and distances. Imaris
-exports preserve source image data and the FISH Imaris 6.3.1 scene structure.
-Both 2D and 3D viewing and the experimental membrane-snap controls are included.
+The signal model and detector checkpoint are unchanged. The earlier scored-region
+comparison found **163/228 manual signals**, **79.9% precision**, **71.5% recall**,
+and **0.147 µm matched-center RMSE**. Those detection figures were obtained with
+the previous contours and have not been remeasured for the new combination.
+Unknown/unmarked regions are excluded from signal scoring and supervision.
+
+## Analysis, exports and verification
+
+The workflow remains contours → signals → remove empty cells → nearest surface
+B points/A–B lines → Imaris, CSV and Excel. Excel includes volumes, per-channel
+counts, signal scores, coordinates and distances. Both signal channels are
+processed separately; a cell is retained if it contains at least one accepted
+signal in any channel. Imaris exports preserve source image data and the FISH
+Imaris 6.3.1 scene profile.
+
+Local release verification passed **164 tests** (6 optional-runtime skips),
+all nine bundled checkpoints on CPU, and a fresh GUI run with the new defaults.
+The new candidate passed seven synthetic empty/background controls, including
+forced proposals. Local CPU GUI checks passed 2D/3D display, real signal detection,
+shortest-border geometry, Excel and Imaris exports, and unchanged source pixels.
+Native Imaris opening was not available locally. GitHub Actions tests readers,
+geometry, losses, default migration and all checkpoints on Linux and Windows
+before publishing the source/model bundles and SHA256SUMS.txt.
+
+Detailed comparisons, training curves, distributions, overlays, protocols and
+verification records are bundled under `reports/contour-bias`; earlier signal
+metrics remain under `reports/signal-centers`.

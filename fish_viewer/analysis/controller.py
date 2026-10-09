@@ -30,8 +30,12 @@ def default_models():
 
 
 def default_refinement_model():
-    path = Path(__file__).resolve().parents[2] / 'models/refinement'
-    return str(path) if (path / 'refinement-model.json').is_file() else ''
+    root = Path(__file__).resolve().parents[2] / 'models'
+    for name in ('refinement-bias-candidate', 'refinement'):
+        path = root / name
+        if (path / 'refinement-model.json').is_file():
+            return str(path)
+    return ''
 
 
 def default_proposal_model():
@@ -41,19 +45,20 @@ def default_proposal_model():
 
 def migrate_bundled_defaults(settings):
     """Upgrade former bundled defaults once, preserving custom model choices."""
-    if settings.value('default_pipeline_version', '') == '0.4.0':
+    if settings.value('default_pipeline_version', '') == '0.4.1':
         return
     root = Path(__file__).resolve().parents[2]
     for key, old, new in (
         ('signal_model', root / 'models/signals', default_models()[1]),
         ('cell_model', root / 'models/cells', default_proposal_model()),
+        ('boundary_model', root / 'models/refinement', default_refinement_model()),
     ):
         value = settings.value(key, '')
         if value and new and Path(value).resolve() == old.resolve():
             settings.setValue(key, str(new))
             if key == 'cell_model' and not settings.value('boundary_model', ''):
                 settings.setValue('boundary_model', default_refinement_model())
-    settings.setValue('default_pipeline_version', '0.4.0')
+    settings.setValue('default_pipeline_version', '0.4.1')
 
 
 def check_models(cells, signals):

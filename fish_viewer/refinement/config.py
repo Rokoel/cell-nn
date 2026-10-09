@@ -27,6 +27,10 @@ class RefinementConfig:
     min_overlap: float = .25
     min_volume_ratio: float = .35
     max_volume_ratio: float = 2.5
+    surface_loss_weight: float = 0.
+    surface_distance_clip_um: float = 2.
+    tversky_beta: float = .5
+    residual_correction: bool = False
     seed: int = 42
 
     def validate(self):
@@ -52,6 +56,10 @@ class RefinementConfig:
             raise ValueError('Invalid crop robustness augmentation.')
         if not 0 < self.min_overlap <= 1 or not 0 < self.min_volume_ratio < 1 < self.max_volume_ratio <= 5:
             raise ValueError('Invalid refinement safeguards.')
+        if not 0 <= self.surface_loss_weight <= 1 or not .2 <= self.surface_distance_clip_um <= 5:
+            raise ValueError('Invalid surface-distance loss settings.')
+        if not .5 <= self.tversky_beta <= .8 or type(self.residual_correction) is not bool:
+            raise ValueError('Invalid under-segmentation/correction settings.')
         return self
 
 

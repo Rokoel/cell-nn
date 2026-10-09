@@ -129,6 +129,7 @@ def contour_proposals(prepared,proposals,model,config,emit=lambda e:None,cancel=
             mask &= labels[region]==0
             mask=seeded_component(mask,seed-lower)
             if not mask.any():reason='Predicted center belongs to an accepted cell'
+            elif mask.sum()*np.prod(spacing)<5.:reason='Contour is too small after resolving overlap'
             else:
                 evidence=surface_evidence(mask,visible[region],spacing)
                 if evidence['surface_support']<evidence_threshold or evidence['surface_contrast']<.04:
@@ -217,7 +218,7 @@ def apply(model_directory,boundary_directory,output,device='auto',emit=lambda e:
             config=replace(config,threshold=threshold).validate()
         boundary_manifest=read_boundary_model(boundary_directory);boundary_config=RefinementConfig(**boundary_manifest['config'])
         from dataclasses import replace
-        boundary_config=replace(boundary_config,margin_um=config.box_margin_um)
+        boundary_config=replace(boundary_config,margin_um=boundary_manifest.get('inference_crop_margin_um',config.box_margin_um)).validate()
         report['config']=asdict(config);report['boundary_config']=asdict(boundary_config)
         report['crop_acceptance']=dict(surface_smoothing_um=.3,
             minimum_surface_support=manifest.get('crop_surface_evidence_threshold',.65),

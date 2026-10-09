@@ -7,7 +7,8 @@ All paths below are relative to the project folder, `/home/rokoel/Documents/cell
 | Model | Folder | Purpose |
 | --- | --- | --- |
 | Center/box detector | `models/proposals` | Locate cells for the focused Analysis pipeline |
-| Cropped 3D U-Net | `models/refinement` | Draw contours inside the detector's boxes |
+| Default surface-trained contour U-Net | `models/refinement-bias-candidate` | Default contour fine-tune; see [test results](../reports/contour-bias/README.md) |
+| Previous best crop U-Net | `models/refinement` | Earlier default, preserved for comparison |
 | Previous conservative signal CNN | `models/signals` | Original single-scale finder and September checkpoint |
 | Experimental refreshed signal CNN | `models/signals-refreshed` | Search three spot sizes, classify crops inside the latest predicted cells; higher recall but lower test precision |
 | Default direct-center U-Net | `models/signals-center-unet` | Predict a dense signal-center heatmap without the candidate finder |
@@ -16,6 +17,12 @@ All paths below are relative to the project folder, `/home/rokoel/Documents/cell
 | Previous boundary U-Net | `models/refinement-base` | Earlier boundary checkpoint |
 
 **Models and device → Use bundled center and crop models**, followed by **Use bundled signal model**, selects the default pipeline in Analysis. Browse to `models/signals-refreshed` to try the experimental signal detector. See [the signal comparison](../reports/signal-refresh/README.md) for measured results. Bundled checksums and training sources are recorded in `models/origins.json`.
+
+The October 9 surface-trained contour model is now the default. To select it manually, choose `models/refinement-bias-candidate`
+for **Models and device → Boundaries**, keeping the bundled cell detector and
+signal-center U-Net. The previous contour model remains selectable. The model also works in
+released v0.4.0; copy its complete folder, not just the weights file. See
+[contour undersizing experiments](contour-bias.md).
 
 ## Historical StarDist runs
 

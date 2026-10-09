@@ -57,5 +57,12 @@
       "config.yaml": "54040251afe02220d9af97390b7d5e74b9826fc1b1a5afee6edbdfe605b23d3b",
       "signal-model.json": "1933f5e08126cf1229822a759dec9b5fe3b9606f1aca959f4baf77cd385ebacb"
     }
+  },
+  "refinement-bias-candidate": {
+    "source": "/home/rokoel/Documents/cell-nn/artifacts/contour-bias-20261009/surface-loss/boundary-train-20261009-025207-067847-of868_50/model",
+    "sha256": {
+      "best.weights.h5": "56eb05c07cc08c2cdedaad27aa0f75774dc3d114f166ea3e2040844b617731c2",
+      "refinement-model.json": "3620a857e2f7d650b70ba2136813db933f0b547c399b63d2c87ccf36bb398b8e"
+    }
   }
 }

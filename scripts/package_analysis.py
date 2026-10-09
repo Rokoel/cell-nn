@@ -45,7 +45,10 @@ def main():
                  'refresh_signal_data.py', 'train_refreshed_signals.py', 'compare_signal_models.py', 'calibrate_signal_model.py',
                  'calibrate_membrane_snap.py', 'build_signal_centers.py', 'train_signal_centers.py',
                  'evaluate_signal_centers.py', 'report_signal_centers.py', 'plot_signal_centers.py',
-                 'evaluate_center_measurements.py'):
+                 'evaluate_center_measurements.py', 'experiment_contour_bias.py', 'train_contour_bias.py',
+                 'build_contour_bias_patches.py', 'run_contour_bias_training.py', 'run_contour_correction_control.py',
+                 'finalize_contour_bias.py', 'evaluate_contour_bias_signals.py', 'report_contour_bias.py',
+                 'plot_contour_bias_overlays.py', 'check_contour_correction.py'):
         shutil.copy2(ROOT / 'scripts' / name, destination / 'scripts' / name)
     shutil.copy2(ROOT / 'scripts/calibrate_cell_proposals.py', destination / 'scripts/calibrate_cell_proposals.py')
     shutil.copy2(ROOT / 'scripts/evaluate_cell_centers.py', destination / 'scripts/evaluate_cell_centers.py')
@@ -64,6 +67,10 @@ def main():
         shutil.copy2(ROOT / 'docs/center-box-contours.md', destination / 'docs/center-box-contours.md')
     if (ROOT / 'docs/membrane-snap.md').exists():
         shutil.copy2(ROOT / 'docs/membrane-snap.md', destination / 'docs/membrane-snap.md')
+    if (ROOT / 'docs/contour-bias.md').exists():
+        shutil.copy2(ROOT / 'docs/contour-bias.md', destination / 'docs/contour-bias.md')
+    if (ROOT / 'reports/contour-bias').exists():
+        shutil.copytree(ROOT / 'reports/contour-bias', destination / 'reports/contour-bias')
     reports = ROOT / 'reports/measurement-accuracy'
     if reports.exists():
         shutil.copytree(reports, destination / 'reports/measurement-accuracy')
@@ -101,15 +108,18 @@ def main():
     if boundary:
         from fish_viewer.refinement.config import read_model
         read_model(boundary)
-        model_sources.append(('refinement', Path(boundary)))
+        model_sources.append((Path(boundary).name, Path(boundary)))
     proposals = default_proposal_model()
     if proposals:
         from fish_viewer.proposals.config import read_model as read_proposal_model
         read_proposal_model(proposals)
         model_sources.append(('proposals', Path(proposals)))
-    baseline_boundary = ROOT / 'models/refinement-base'
-    if (baseline_boundary / 'refinement-model.json').is_file():
-        model_sources.append(('refinement-base', baseline_boundary))
+    for label in ('refinement', 'refinement-base', 'refinement-bias-candidate'):
+        source = ROOT / 'models' / label
+        if (source / 'refinement-model.json').is_file() and label not in {name for name, _ in model_sources}:
+            from fish_viewer.refinement.config import read_model
+            read_model(source)
+            model_sources.append((label, source))
     for label, source in model_sources:
         target = destination / 'models' / label
         target.mkdir(parents=True)

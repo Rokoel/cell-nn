@@ -28,13 +28,15 @@ def main():
     boundary = default_refinement_model()
     proposals = default_proposal_model()
     if args.require_latest_models and not (boundary and proposals):
-        parser.error('The release must include models/proposals and models/refinement.')
+        parser.error('The release must include the current cell and contour models.')
+    if args.require_latest_models and Path(boundary).name != 'refinement-bias-candidate':
+        parser.error('The release must default to models/refinement-bias-candidate.')
     provenance=ROOT/'models/origins.json'
     if args.require_latest_models and not provenance.is_file():
         parser.error('The release must include models/origins.json with model checksums.')
     if provenance.exists():
         origins = json.loads(provenance.read_text())
-        if args.require_latest_models and not {'cells', 'signals', 'proposals', 'refinement', 'signals-center-unet'}.issubset(origins):
+        if args.require_latest_models and not {'cells', 'signals', 'proposals', 'refinement', 'refinement-bias-candidate', 'signals-center-unet'}.issubset(origins):
             parser.error('Missing model provenance for a required checkpoint.')
         for label,info in origins.items():
             for name,digest in info['sha256'].items():
@@ -66,10 +68,11 @@ def main():
         assert output.shape==(1,1) and np.isfinite(output).all()
         signal_shapes[label]=list(output.shape)
     boundary_shapes = {}
-    boundary_models = [('refinement', Path(boundary))] if boundary else []
-    baseline = ROOT / 'models/refinement-base'
-    if (baseline / 'refinement-model.json').is_file():
-        boundary_models.append(('refinement-base', baseline))
+    boundary_models = [(Path(boundary).name, Path(boundary))] if boundary else []
+    for label in ('refinement', 'refinement-base', 'refinement-bias-candidate'):
+        baseline = ROOT / 'models' / label
+        if (baseline / 'refinement-model.json').is_file() and label not in {name for name, _ in boundary_models}:
+            boundary_models.append((label, baseline))
     for label, folder in boundary_models:
         from fish_viewer.refinement.config import read_model
         from fish_viewer.refinement.config import RefinementConfig
@@ -104,7 +107,8 @@ def main():
                 assert report['passed'], f'Empty-signal controls failed for {label}'
                 direct_controls[label] = report
     print(json.dumps(dict(status='complete',default_signal_model=signals.name,default_signal_engine=default_signal_manifest['engine'],runtime=info,cell_probability_shape=list(probability.shape),
-                         signal_score=score.tolist(),boundary_logit_shape=boundary_shapes.get('refinement'),
+                         default_boundary_model=Path(boundary).name if boundary else None,
+                         signal_score=score.tolist(),boundary_logit_shape=boundary_shapes.get(Path(boundary).name if boundary else ''),
                          boundary_models=boundary_shapes,proposal_shape=proposal_shape,signal_models=signal_shapes,direct_signal_controls=direct_controls)))
 
 

@@ -84,9 +84,11 @@ another choice was saved. The previous conservative CNN is preserved at
 The new default found 163/228 eligible manual signals: 71.5% recall and 79.9%
 precision. See [direct signal models](signal-centers.md) for the comparison.
 The default center-and-box detector goes in **Cells** (`models/proposals`)
-and requires the crop U-Net in **Boundaries** (`models/refinement`). Its failed
+and requires the crop U-Net in **Boundaries** (`models/refinement-bias-candidate`). Its failed
 crops are rejected without a guessed contour. New installations discover this
-pair when bundled; saved model choices are retained. See
+pair when bundled; former bundled defaults migrate once, while custom model choices
+are retained. The previous contour model remains at `models/refinement`. See
+[contour improvements](contour-bias.md) for the latest results and their scope. See
 [the two-network cell pipeline](center-box-contours.md) for training labels and
 validation. Analyzing scans does not retrain these models.
 
@@ -168,9 +170,9 @@ The real Linux desktop smoke test runs the chosen cell and signal models and ver
 exported B lies on its own cell and has the shortest A–B distance. It also checks
 tables, image byte preservation, 2D/3D overlays and line visibility. The test is
 `scripts/smoke_analysis.py`; results and screenshots are under `artifacts/analysis-smoke`.
-The latest full suite passed 119 tests. A real scan completed all five steps
-using the center/box detector, crop U-Net and existing signal CNN, with 7 retained
-cells and 7 signals. All bundled models passed CPU loading and inference.
+The contour experiment suite passed 163 tests. A real scan completed all five steps
+using the center/box detector, surface-trained crop U-Net and signal-center U-Net,
+with 18 retained cells and 18 signals. All bundled models passed CPU loading and inference.
 Native Windows desktop execution and opening in Imaris itself have not been
 tested locally. The release workflow separately verifies Windows CPU inference.
 The exporter retains the FISH Imaris 6.3.1 XML profile.

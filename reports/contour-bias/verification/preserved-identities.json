@@ -1,0 +1,6 @@
+{
+  "status": "passed",
+  "scans": 71,
+  "preserved_cell_ids": 4513,
+  "policy": "Exact label-ID set comparison of every original and candidate test archive"
+}

@@ -21,14 +21,26 @@ from .network import network, loss
 def charts(directory, report):
     from matplotlib.figure import Figure
     from matplotlib.backends.backend_agg import FigureCanvasAgg
-    figure = Figure(figsize=(11,4.5), layout='constrained'); FigureCanvasAgg(figure)
-    axes = figure.subplots(1,2)
     rows = report['epochs']
+    boundaries = any('boundary_error_um' in r.get('validation',{}) for r in rows)
+    figure = Figure(figsize=(11,8 if boundaries else 4.5), layout='constrained'); FigureCanvasAgg(figure)
+    axes = figure.subplots(2,2).ravel() if boundaries else figure.subplots(1,2)
     for ax, key, title in [(axes[0],'loss','Boundary-weighted training loss'),
                             (axes[1],'dice','Soft target-cell Dice')]:
         for split in ('training','validation'):
             ax.plot([r['epoch'] for r in rows], [r[split][key] for r in rows], label=split)
         ax.set(xlabel='Epoch', title=title); ax.grid(alpha=.2); ax.legend()
+    if boundaries:
+        axes[2].plot([r['epoch'] for r in rows],[r['validation'].get('boundary_error_um') for r in rows])
+        axes[2].set(xlabel='Epoch',ylabel='µm',title='Validation symmetric boundary error')
+        if report.get('initial_validation'):
+            axes[2].axhline(report['initial_validation']['boundary_error_um'],color='gray',linestyle='--',label='Initial checkpoint')
+            axes[2].legend()
+        for key in ('volume_mape','volume_bias_percent'):
+            axes[3].plot([r['epoch'] for r in rows],[r['validation'].get(key) for r in rows],label=key)
+        axes[3].axhline(0,color='gray',linestyle='--');axes[3].legend()
+        axes[3].set(xlabel='Epoch',ylabel='%',title='Validation volume error and signed bias')
+        axes[2].grid(alpha=.2);axes[3].grid(alpha=.2)
     figure.savefig(directory/'training-progress.png', dpi=160)
     with (directory/'epochs.csv').open('w',newline='',encoding='utf-8') as stream:
         writer=csv.DictWriter(stream,fieldnames=['epoch','training_loss','validation_loss',
@@ -81,8 +93,38 @@ def batch(arrays, records, indices, config, rng, augment=False):
             x=np.array(x,copy=True)
             x[...,0]=np.clip(x[...,0]*rng.uniform(.75,1.25)+rng.uniform(-.03,.03)
                              +rng.normal(0,.008,x.shape[:3]),0,1)
+        if config.surface_loss_weight:
+            # Derive distances after spatial augmentation, in physical units.
+            mask = y[...,0] > .5
+            step_um = record['patch_spacing_um'] if index >= 0 else .2
+            if mask.any():
+                distance = ndi.distance_transform_edt(~mask, sampling=step_um)-ndi.distance_transform_edt(mask, sampling=step_um)
+                distance = np.clip(distance/config.surface_distance_clip_um,-1,1)
+            else:
+                distance = np.ones(mask.shape,np.float32)
+            y = np.concatenate([y,distance[...,None]],axis=-1)
         images.append(x); targets.append(y)
     return np.ascontiguousarray(images,np.float32), np.ascontiguousarray(targets,np.float32)
+
+
+def validation_boundaries(probability, target, selected, records, config):
+    """Physical surface agreement and signed volume error, complete val targets."""
+    from .inference import seeded_component
+    values=[]
+    for p,y,index in zip(probability,target,selected):
+        if not records[index].get('validation_checkpoint_score',True):continue
+        truth=(y[...,0]>.5)&(y[...,2]>.5)
+        found=seeded_component((p[...,0]>=config.threshold)&(y[...,2]>.5),records[index]['seed_patch'])
+        a=found & ~ndi.binary_erosion(found);b=truth & ~ndi.binary_erosion(truth)
+        spacing=records[index]['patch_spacing_um']
+        if a.any() and b.any():
+            da=ndi.distance_transform_edt(~a,sampling=spacing)
+            db=ndi.distance_transform_edt(~b,sampling=spacing)
+            boundary=float(np.mean(np.r_[db[a],da[b]]))
+        else:boundary=spacing*config.patch_size
+        bias=100*(found.sum()-truth.sum())/max(1,truth.sum())
+        values.append((boundary,float(abs(bias)),float(bias)))
+    return values
 
 
 def train(audit, cache, patches, output, config, device='auto', emit=lambda e:None, cancel=None, initial_model=None):
@@ -110,6 +152,7 @@ def train(audit, cache, patches, output, config, device='auto', emit=lambda e:No
             raise ValueError('Both independent training and validation targets are required.')
         negative_count=int(np.ceil(len(train_ids)*config.negative_fraction))
         report['samples']=dict(training_cells=len(train_ids),validation_cells=len(val_ids),
+                               validation_boundary_scored_cells=sum(records[i].get('validation_checkpoint_score',True) for i in val_ids),
                                synthetic_negative_crops=negative_count,
                                policy='Every training cell once per epoch; no roundness selection. '
                                       'Synthetic negatives supplement targets; no reviewed real negatives available.')
@@ -125,9 +168,12 @@ def train(audit, cache, patches, output, config, device='auto', emit=lambda e:No
         if initial_model:
             from .config import read_model
             initial=read_model(initial_model)
-            for key in ('patch_size','filters','depth'):
+            for key in ('filters','depth'):
                 if initial['config'][key]!=getattr(config,key):raise ValueError('Initial boundary architecture differs: '+key)
-            model.load_weights(Path(initial_model)/initial['checkpoint'])
+            if config.residual_correction and not initial['config'].get('residual_correction',False):
+                model.get_layer('frozen_contour').load_weights(Path(initial_model)/initial['checkpoint'])
+            else:
+                model.load_weights(Path(initial_model)/initial['checkpoint'])
             report['initial_model']=str(Path(initial_model).resolve())
             report['initial_checkpoint_sha256']=hashlib.sha256((Path(initial_model)/initial['checkpoint']).read_bytes()).hexdigest()
         optimizer=tf.keras.optimizers.Adam(config.learning_rate,clipnorm=5.)
@@ -136,14 +182,18 @@ def train(audit, cache, patches, output, config, device='auto', emit=lambda e:No
         @tf.function(jit_compile=False,reduce_retracing=True)
         def train_step(x,y):
             with tf.GradientTape() as tape:
-                value,dice=loss(tf,y,model(x,training=True))
+                value,dice=loss(tf,y,model(x,training=True),config)
                 scaled=optimizer.scale_loss(value) if hasattr(optimizer,'scale_loss') else value
             gradients=tape.gradient(scaled,model.trainable_variables)
             optimizer.apply_gradients(zip(gradients,model.trainable_variables))
             return value,dice
         @tf.function(jit_compile=False,reduce_retracing=True)
         def validation_step(x,y):
-            return loss(tf,y,model(x,training=False))
+            logits=model(x,training=False)
+            value,dice=loss(tf,y,logits,config)
+            if config.surface_loss_weight:
+                return value,dice,tf.math.sigmoid(logits)
+            return value,dice
         rng=np.random.default_rng(config.seed);best=float('inf');stale=0
         manifest=dict(version=1,engine='seeded-unet3d',config=asdict(config),checkpoint='best.weights.h5',
                       input='Normalized membrane + physical Gaussian seed; target-conditioned full 3D mask.',
@@ -152,18 +202,41 @@ def train(audit, cache, patches, output, config, device='auto', emit=lambda e:No
                       audit_sha256=hashlib.sha256(Path(audit).read_bytes()).hexdigest())
         if initial_model:
             manifest.update(initial_model=report['initial_model'],initial_checkpoint_sha256=report['initial_checkpoint_sha256'])
+        manifest['checkpoint_selection']='Validation physical boundary error with non-increasing volume MAPE; epoch zero retained if no improvement' if config.surface_loss_weight else 'Validation loss'
         _json(model_dir/'refinement-model.json',manifest)
+        best_surface=float('inf')
+        if initial_model and config.surface_loss_weight:
+            measurements=[];initial_losses=[]
+            for start_index in range(0,len(val_ids),config.batch_size):
+                checkpoint(cancel)
+                ids=val_ids[start_index:start_index+config.batch_size]
+                x,y=batch(arrays,records,ids,config,rng)
+                v,d,p=validation_step(x,y)
+                measurements.extend(validation_boundaries(p.numpy(),y,ids,records,config))
+                initial_losses.extend([float(v.numpy())]*len(ids))
+                if start_index%100==0:
+                    notify(dict(kind='progress',phase='Scoring initial contour boundary',current=start_index,total=len(val_ids)))
+            initial_mean=np.mean(measurements,axis=0)
+            report['initial_validation']=dict(boundary_error_um=float(initial_mean[0]),volume_mape=float(initial_mean[1]),volume_bias_percent=float(initial_mean[2]),loss=float(np.mean(initial_losses)))
+            best_surface=float(initial_mean[0]);best=report['initial_validation']['loss']
+            report['best_epoch']=0
+            model.save_weights(model_dir/'best.weights.h5')
+            manifest.update(best_epoch=0,validation_loss=best,validation_boundary_error_um=best_surface)
+            _json(model_dir/'refinement-model.json',manifest)
         for epoch in range(1,config.epochs+1):
             checkpoint(cancel)
             row=dict(epoch=epoch)
             for split, ids, step in [('training',rng.permutation(train_ids+[-1]*negative_count),train_step),
                                      ('validation',np.asarray(val_ids),validation_step)]:
-                values=[];counts=[];total=int(np.ceil(len(ids)/config.batch_size))
+                values=[];counts=[];surface_values=[];total=int(np.ceil(len(ids)/config.batch_size))
                 for b,start_index in enumerate(range(0,len(ids),config.batch_size)):
                     checkpoint(cancel)
                     selected=ids[start_index:start_index+config.batch_size]
                     x,y=batch(arrays,records,selected,config,rng,augment=split=='training')
-                    result=[float(v.numpy()) for v in step(x,y)]
+                    outputs=step(x,y)
+                    result=[float(v.numpy()) for v in outputs[:2]]
+                    if split=='validation' and config.surface_loss_weight:
+                        surface_values.extend(validation_boundaries(outputs[2].numpy(),y,selected,records,config))
                     if not np.isfinite(result).all():
                         raise ValueError('Non-finite boundary training metrics.')
                     values.append(result);counts.append(len(selected))
@@ -172,21 +245,29 @@ def train(audit, cache, patches, output, config, device='auto', emit=lambda e:No
                                     epochs=config.epochs,current=b+1,total=total,loss=result[0],dice=result[1]))
                 means=np.average(values,axis=0,weights=counts)
                 row[split]=dict(loss=float(means[0]),dice=float(means[1]))
+                if surface_values:
+                    metrics=np.mean(surface_values,axis=0)
+                    row[split].update(boundary_error_um=float(metrics[0]),volume_mape=float(metrics[1]),volume_bias_percent=float(metrics[2]))
             row['elapsed_s']=time.monotonic()-start
             report['epochs'].append(row)
-            if row['validation']['loss']<best-1e-4:
+            if config.surface_loss_weight:
+                improved=row['validation']['boundary_error_um']<best_surface-1e-5 and row['validation']['volume_mape']<=report.get('initial_validation',{}).get('volume_mape',float('inf'))
+            else:improved=row['validation']['loss']<best-1e-4
+            if improved:
                 best=row['validation']['loss'];stale=0
+                if config.surface_loss_weight:best_surface=row['validation']['boundary_error_um']
                 temporary=model_dir/'checkpoint.tmp.weights.h5'
                 model.save_weights(temporary);temporary.replace(model_dir/'best.weights.h5')
                 report['best_epoch']=epoch
                 manifest.update(best_epoch=epoch,validation_loss=best)
+                if config.surface_loss_weight:manifest['validation_boundary_error_um']=best_surface
                 _json(model_dir/'refinement-model.json',manifest)
             else:
                 stale+=1
             charts(directory,report);_json(directory/'report.json',report)
             emit(dict(kind='epoch',**row,best_epoch=report['best_epoch']))
             if stale>=config.patience:
-                report['stop_reason']='Validation loss stopped improving.';break
+                report['stop_reason']='Validation boundary agreement stopped improving.' if config.surface_loss_weight else 'Validation loss stopped improving.';break
         report['status']='complete'
         report['checkpoint_sha256']=hashlib.sha256((model_dir/'best.weights.h5').read_bytes()).hexdigest()
         notify(dict(kind='progress',phase='Boundary training complete',current=len(report['epochs']),
