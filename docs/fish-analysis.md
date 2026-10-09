@@ -46,7 +46,11 @@ the existing viewer. Windows and Linux launchers use the same application code.
    with its matching `.ims` beside it.
 7. **Export Excel…** saves a workbook from the displayed analysis. A workbook is
    also saved automatically beside every exported scan. Its sheets contain cell
-   volumes (µm³), signals and A/B distances (µm), per-channel counts, and a summary.
+   volumes (µm³) and signal-to-border distances (µm) in exactly two sheets.
+   Each list distinguishes **Manual** and **NN** measurements. Original manual
+   annotations are read from the source scan and its Imaris scene, when present;
+   manual A–B distances retain their original values. Signal channels are listed
+   separately, and an ambiguous manual channel remains blank.
    Older saved analyses also support Excel export; their mesh volumes are computed
    when opened.
 

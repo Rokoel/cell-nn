@@ -350,6 +350,11 @@ class AnalysisWindow(QtWidgets.QMainWindow):
                 root = Path(result_path).parent
                 dataset = load_dataset(LibraryEntry(root / manifest['image'], root / manifest['scene']))
                 _, report = read_signals(root / manifest['signal_report'])
+                annotations = (root / manifest['image']).with_suffix('.annotations.json')
+                if annotations.is_file():
+                    saved = json.loads(annotations.read_text(encoding='utf-8'))
+                    if 'manual_measurements' in saved:
+                        report['manual_measurements'] = saved['manual_measurements']
             else:
                 dataset = load_dataset(LibraryEntry(Path(image)))
                 dataset.scene = Scene()  # Raw preview; manual contours never become pipeline output.

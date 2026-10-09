@@ -119,14 +119,15 @@ def test_saved_run_preserves_baseline_geometry_and_refuses_cumulative_snapping(t
     assert failed['status'] == 'failed' and 'different physical grid' in failed['error']
 
 
-def test_excel_identifies_snapped_contours(tmp_path):
+def test_excel_remains_two_lists_with_membrane_snap_metadata(tmp_path):
     from openpyxl import load_workbook
     from fish_viewer.workflow.excel import write_excel
     report = dict(points=[], counts=[], cell_volumes=[dict(cell_id=1, volume_um3=10.)],
                   membrane_snap=dict(config=dict(max_shift_um=.3), cells=[dict(cell_id=1, accepted=True, mean_shift_um=.05)]))
     book = load_workbook(write_excel(tmp_path / 'report.xlsx', report), read_only=True, data_only=True)
     try:
-        assert list(book['Cells'].values)[1][-3:] == ('snapped', None, .05)
+        assert book.sheetnames == ['Cell volumes', 'Signal distances']
+        assert list(book['Cell volumes'].values)[1] == ('NN',1,10.)
     finally:
         book.close()
 

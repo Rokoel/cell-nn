@@ -78,6 +78,9 @@ def export_result(report_path, target, emit=lambda event: None, cancel=None):
     if len(surfaces) != len({point['cell_id'] for point in report['points']}):
         raise ValueError('The filtered contour set does not match the detected signals.')
     target.parent.mkdir(parents=True, exist_ok=True)
+    from .manual import manual_measurements
+    emit(dict(kind='progress', phase='Reading manual cell volumes and signal distances', current=0, total=1))
+    report['manual_measurements'] = manual_measurements(report, cancel)
     with tempfile.TemporaryDirectory(prefix='.fish-export-', dir=target.parent) as temporary:
         staging = Path(temporary)
         source = Path(report['image'])

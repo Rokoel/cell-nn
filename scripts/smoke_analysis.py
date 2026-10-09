@@ -109,11 +109,25 @@ def exercise():
         exported = json.loads(window.result_path.read_text())
         workbook_path = next(window.result_path.parent / p for p in exported['files'] if p.endswith('.xlsx'))
         workbook = load_workbook(workbook_path, data_only=True)
-        assert workbook['Signals'].max_row-1 == len(report['points'])
-        assert workbook['Cells'].max_row-1 == len(report['cell_volumes'])
-        if window.boundary_model.text():
-            assert 'Boundary refinement' in [c.value for c in workbook['Cells'][1]]
-        assert np.isclose(workbook['Signals']['M2'].value, report['points'][0]['distance_um'], atol=1e-14, rtol=1e-14)
+        assert workbook.sheetnames == ['Cell volumes', 'Signal distances']
+        nn_distances = [r for r in list(workbook['Signal distances'].values)[1:] if r[0]=='NN']
+        nn_volumes = [r for r in list(workbook['Cell volumes'].values)[1:] if r[0]=='NN']
+        assert len(nn_distances) == len(report['points'])
+        assert len(nn_volumes) == len(report['cell_volumes'])
+        assert np.isclose(nn_distances[0][-1], report['points'][0]['distance_um'], atol=1e-14, rtol=1e-14)
+        automatic_rows = {name: list(workbook[name].values) for name in workbook.sheetnames}
+        workbook.close()
+        button_path = (output / 'button-export.xlsx').resolve()
+        original_dialog = QtWidgets.QFileDialog.getSaveFileName
+        QtWidgets.QFileDialog.getSaveFileName = lambda *a, **kw: (str(button_path), 'Excel (*.xlsx)')
+        try:
+            window.excel_button.click()
+            wait(lambda: button_path.exists() and not window.loading)
+        finally:
+            QtWidgets.QFileDialog.getSaveFileName = original_dialog
+        workbook = load_workbook(button_path, data_only=True)
+        assert workbook.sheetnames == ['Cell volumes', 'Signal distances']
+        assert {name: list(workbook[name].values) for name in workbook.sheetnames} == automatic_rows
         workbook.close()
         assert digest(window.dataset.metadata.path) == original_hash == digest(args.image)
         surfaces = {int(s.name.split()[2]): SurfaceLocator(s) for s in window.dataset.scene.surfaces}

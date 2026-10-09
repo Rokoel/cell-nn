@@ -102,14 +102,15 @@ def test_finer_cache_application_preserves_saved_geometry_without_tensorflow(tmp
         assert saved['spacing_zyx']==[.15]*3 and saved['refinement']['cells'][0]['cell_id']==1
 
 
-def test_excel_exposes_refinement_fallbacks(tmp_path):
+def test_excel_remains_two_lists_with_refinement_metadata(tmp_path):
     from openpyxl import load_workbook
     from fish_viewer.workflow.excel import write_excel
     report=dict(points=[],counts=[],cell_volumes=[dict(cell_id=1,volume_um3=10.)],
                 boundary_refinement=dict(model='example',cells=[dict(cell_id=1,accepted=False,fallback_reason='Weak membrane')]))
     path=write_excel(tmp_path/'report.xlsx',report)
     book=load_workbook(path,read_only=True,data_only=True)
-    assert list(book['Cells'].values)[1][-2:]==('detector contour retained','Weak membrane')
+    assert book.sheetnames == ['Cell volumes', 'Signal distances']
+    assert list(book['Cell volumes'].values)[1] == ('NN',1,10.)
     book.close()
 
 
