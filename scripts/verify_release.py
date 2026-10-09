@@ -2,6 +2,7 @@
 import argparse
 import json
 import hashlib
+import os
 from pathlib import Path
 import sys
 import subprocess
@@ -102,7 +103,12 @@ def main():
             with tempfile.TemporaryDirectory(prefix='fish-center-check-') as output:
                 process = subprocess.run([sys.executable, '-m', 'fish_viewer.signals', '--mode', 'controls',
                     '--model', str(folder), '--output', output, '--device', 'cpu'],
-                    cwd=ROOT, text=True, capture_output=True, check=True)
+                    cwd=ROOT, text=True, capture_output=True,
+                    env=dict(os.environ, PYTHONFAULTHANDLER='1'))
+                if process.returncode:
+                    print(process.stdout, file=sys.stderr)
+                    print(process.stderr, file=sys.stderr)
+                    process.check_returncode()
                 report = json.loads(process.stdout.splitlines()[-1])['report']
                 assert report['passed'], f'Empty-signal controls failed for {label}'
                 direct_controls[label] = report
