@@ -1,0 +1,47 @@
+# Build with scripts/build_standalone.py; paths are supplied explicitly.
+import os
+from pathlib import Path
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files, copy_metadata
+
+root = Path(SPECPATH).parent
+bundle = Path(os.environ['FISH_SOURCE_BUNDLE'])
+datas = [(str(bundle / name), name) for name in ('models', 'docs', 'reports')]
+datas += [(str(root / 'scripts/verify_release.py'), 'scripts')]
+datas += collect_data_files('fish_viewer')
+# Lazy imports in both neural libraries need distribution metadata at runtime.
+for package in ('stardist', 'csbdeep', 'tensorflow', 'keras', 'numpy', 'scipy',
+                'torch', 'torchvision', 'spotiflow', 'pyvista', 'pyvistaqt', 'imagecodecs'):
+    datas += copy_metadata(package, recursive=True)
+hidden = collect_submodules('fish_viewer')
+hidden += collect_submodules('stardist') + collect_submodules('csbdeep')
+hidden += collect_submodules('spotiflow')
+binaries = []
+if os.name == 'nt':
+    crt = Path(os.environ['FISH_WINDOWS_CRT'])
+    binaries += [(str(p), '.') for p in crt.glob('*.dll')]
+else:
+    # Qt's desktop platform plugin needs these on hosts without Qt installed.
+    import ctypes.util
+    from PyInstaller.depend.bindepend import resolve_library_path
+    for name in ('xcb-cursor', 'xcb-icccm', 'xcb-image', 'xcb-keysyms',
+                 'xcb-render-util', 'xcb-xinerama', 'xkbcommon-x11', 'EGL', 'GL', 'OpenGL'):
+        library = ctypes.util.find_library(name)
+        path = resolve_library_path(library) if library else None
+        if path:
+            binaries.append((path, '.'))
+
+a = Analysis([str(root / 'packaging/entry.py')], pathex=[str(root)],
+             binaries=binaries, datas=datas, hiddenimports=hidden,
+             excludes=['PyQt5', 'PyQt6', 'PySide2', 'tkinter', 'IPython', 'pytest',
+                       'jax', 'jaxlib', 'nvidia', 'tensorboard', 'wandb'],
+             noarchive=False)
+pyz = PYZ(a.pure)
+# torch JIT and TensorFlow need source files; their maintained hooks collect them.
+if os.name == 'nt':
+    exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name='FISH-Analysis',
+              debug=False, strip=False, upx=False, console=True,
+              icon=str(root / 'packaging/fish.ico'))
+else:
+    exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='FISH-Analysis',
+              debug=False, strip=False, upx=False, console=True)
+    coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name='FISH-Analysis')

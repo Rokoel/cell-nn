@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=FISH Analysis
+Comment=Cell contours, fluorescence signals and calibrated measurements
+Exec=FISH-Analysis %F
+Icon=fish-analysis
+Categories=Science;Biology;
+Terminal=false
+MimeType=application/x-imaris;

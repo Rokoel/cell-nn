@@ -1,37 +1,69 @@
 # Releases
 
-`.github/workflows/release.yml` builds and publishes releases automatically.
-The repository contains the inference checkpoints under `models/`, so builds
-do not depend on the original FISH scans or local training artifact folders.
+`.github/workflows/release.yml` builds Windows x64 and Linux x64 on their native
+GitHub runners, then publishes only after both packaged applications pass.
+No FISH scans or local training caches are required or distributed.
 
-1. Set the version in `pyproject.toml` and update `docs/release-notes.md`.
-2. Commit the changes, tag that commit with `v<version>`, and push the commit/tag.
-3. GitHub Actions installs the application and a separate CPU PyTorch runtime on Linux and Windows, runs synthetic
-   data/export/geometry/Excel tests, loads the bundled checkpoints and executes CPU
-   inference, then builds source/model ZIP bundles for each platform. It verifies
-   checksums and CPU inference again from each packaged copy, requires the latest
-   center/box, crop and default signal U-Net models, and tests that unknown detector voxels have zero
-   loss gradient.
-4. Only after both builds succeed does the publish job create a GitHub release
-   with both archives and `SHA256SUMS.txt`.
+The release contains `FISH-Analysis-v<version>-windows-x64.exe` and
+`FISH-Analysis-v<version>-linux-x64.AppImage`. Each file contains the GUI,
+Python, Qt/VTK, CPU TensorFlow/PyTorch runtimes, Imaris export templates and
+all current analysis preset models. Both-detector consensus and the signal-center
+3D U-Net remain the defaults. There is no first-run dependency download.
+Windows includes the Visual Studio x64 redistributable DLLs app-locally, including
+`msvcp140.dll`, `vcruntime140.dll` and `vcruntime140_1.dll`; users do not need the
+separate runtime installer. Build manifests record dependency versions and model
+hashes, and `SHA256SUMS.txt` covers the assets.
 
-For an existing tag, use **Actions → Build and release FISH Analysis → Run
-workflow**, entering that tag. Re-running replaces the assets for that tag after
-verification; it does not retrain or pick different models. The release token is
-GitHub's built-in `GITHUB_TOKEN`; only the publish job has `contents: write`.
+## Running a release
 
-These are Python source/model distributions, not standalone executables. They
-include setup and launch scripts for both operating systems. Python 3.12 and an
-internet connection for dependency installation are required on first setup.
-Native Windows uses CPU inference. Linux can install the optional GPU extra.
+On Windows 10/11 x64, double-click the EXE. On Linux x64 (glibc 2.35 or newer,
+including Ubuntu 22.04+), mark the AppImage executable and launch it:
 
-`scripts/package_analysis.py --output <new-directory>` creates the same bundle
-locally using the installed runtime. `scripts/verify_release.py` verifies all
-bundled model checksums and CPU inference without access to FISH or training
-caches. Pass `--require-latest-models` to reject a bundle missing the center/box
-detector or crop U-Net. Both Viewer and Analysis launchers, release notes, and the
-latest evaluation reports are included in each archive.
+```sh
+chmod +x FISH-Analysis-*-linux-x64.AppImage
+./FISH-Analysis-v<version>-linux-x64.AppImage
+```
 
-The workflow runs isolated U-Net/Spotiflow tests and verifies both direct-center
-checkpoints with `--with-direct-signals`. Default U-Net verification is mandatory
-even without that flag. No FISH scans are distributed.
+Linux still needs a working desktop/OpenGL driver. If FUSE is unavailable, use
+`APPIMAGE_EXTRACT_AND_RUN=1 ./FISH-Analysis-v<version>-linux-x64.AppImage`.
+The Windows single-file application extracts its bundled libraries to a temporary
+folder on launch, so the first startup can take longer. Both formats need free
+space for their bundled libraries and analysis outputs. These packages use CPU
+inference; source installations still support the existing optional Linux GPU
+setup. Results and settings are saved outside the executable.
+
+## Building and publishing
+
+1. Update `pyproject.toml`, `fish_viewer/__init__.py` and `docs/release-notes.md`.
+2. Commit, tag with `v<version>`, and push the commit/tag.
+3. Actions tests readers, geometry, annotations, Excel and neural workers, loads
+   every checkpoint on CPU, and creates a verified source staging bundle.
+4. `scripts/build_standalone.py` freezes that bundle using PyInstaller. Windows
+   uses one-file mode; Linux wraps a directory build in an AppImage using the
+   checksum-pinned upstream appimagetool 1.9.1.
+5. Actions runs the actual executable from a temporary directory outside the
+   checkout, with external Python environment overrides removed. It verifies all
+   checkpoints and U-Net/Spotiflow empty-signal controls, then runs the full default
+   consensus pipeline on synthetic Imaris data. A non-empty contour/signal case
+   checks volumes, A/B distances, Imaris round-trip and single-sheet Excel export.
+6. Only after both platforms pass are the binaries and checksums published.
+
+For a trial build, use **Actions → Build and release FISH Analysis → Run workflow**
+on the selected branch, enter its version label, and leave **publish** disabled.
+An optional **ref** selects a commit/tag instead. Enabling **publish** requires
+an existing version tag and publishes the selected build. For a release rebuild,
+select that tag as the ref. Only the publish job has `contents: write`.
+
+Local builds require Python 3.12, the application neural dependencies,
+`requirements-spots.txt`, `requirements-build.txt`, CPU torch 2.9.1 and torchvision
+0.24.1. Windows also requires Visual Studio C++ tools with its x64 redistributable
+folder. Linux requires the Qt xcb/OpenGL development-host runtime libraries listed
+in the workflow. Run `scripts/package_analysis.py --output <new-directory>`, verify
+that directory using `scripts/verify_release.py --require-latest-models
+--with-direct-signals`, then run `scripts/build_standalone.py --bundle <directory>
+--tag v<version>`. The source bundle script remains available for developers.
+
+The frozen executable recognizes the same restricted `-m fish_viewer.<worker>`
+commands as the source app's QProcess workers. Workers run separately so the GUI
+never loads TensorFlow and PyTorch together. `--verify-models` and `--self-test
+--output <new-directory>` expose the packaged checks for troubleshooting.

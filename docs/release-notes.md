@@ -1,4 +1,18 @@
-# FISH Analysis v0.7.3
+# FISH Analysis v0.8.0
+
+This release provides a **single Windows EXE** and **single Linux AppImage**.
+The GUI, current models, Python, Qt/VTK and CPU TensorFlow/PyTorch are bundled;
+no Python installation or first-run dependency download is needed. Both-detector
+consensus and the signal-center 3D U-Net remain the defaults. Windows includes
+app-local Microsoft C++ runtime DLLs to prevent the reported TensorFlow DLL
+initialization failure. Linux builds target Ubuntu 22.04+ (glibc 2.35+), with
+an extract-and-run option for systems without FUSE.
+
+GitHub Actions builds both formats automatically. Before publishing, each actual
+executable must load and verify the checkpoints, pass direct-signal controls,
+run the complete consensus pipeline on synthetic Imaris data, and round-trip
+non-empty contours, A/B distances and the single-sheet Excel export from outside
+the checkout. Model weights and evaluation results are unchanged from v0.7.3.
 
 Contour editing now shows only the current slice's border points. Select a
 contour and drag its dots directly; the grab area is 24 screen pixels across
@@ -37,10 +51,8 @@ and the reproducible benchmark are included under
 
 ## Distribution and verification
 
-This release uses the existing Linux/Windows source-and-model ZIP bundles.
-Run the included setup script with Python 3.12. The next workflow change adds
-standalone Windows EXE and Linux AppImage builds; these are not assets of v0.7.3.
-Windows setup installs Microsoft's signed Visual C++ runtime before TensorFlow.
+Download the EXE on Windows, or make the AppImage executable on Linux.
+See `docs/releasing.md` for runtime requirements and the FUSE-free launch option.
 
 Contour dragging, fixed neighbor positions, live line updates, repeated edits,
 mesh closure, undo, edited export/reload, and the real Linux GUI were verified.

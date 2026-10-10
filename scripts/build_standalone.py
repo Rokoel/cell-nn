@@ -1,0 +1,166 @@
+"""Freeze the tested source bundle as a Windows EXE or Linux AppImage."""
+
+import argparse
+import hashlib
+import importlib.metadata
+import json
+import os
+import shutil
+import subprocess
+import sys
+import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+APPIMAGE_URL = "https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage"
+APPIMAGE_SHA256 = "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"
+
+
+def windows_crt():
+    vswhere = (
+        Path(os.environ["ProgramFiles(x86)"])
+        / "Microsoft Visual Studio/Installer/vswhere.exe"
+    )
+    install = subprocess.check_output(
+        [
+            str(vswhere),
+            "-latest",
+            "-products",
+            "*",
+            "-requires",
+            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+            "-property",
+            "installationPath",
+        ],
+        text=True,
+    ).strip()
+    candidates = sorted(
+        (Path(install) / "VC/Redist/MSVC").glob("*/x64/Microsoft.VC143.CRT")
+    )
+    if not candidates:
+        raise RuntimeError(
+            "Visual Studio x64 app-local redistributable DLLs are missing."
+        )
+    folder = candidates[-1]
+    for name in ("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll"):
+        if not (folder / name).is_file():
+            raise RuntimeError(f"Missing Windows runtime: {name}")
+    return folder
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--bundle", required=True, type=Path)
+    parser.add_argument("--tag", required=True)
+    parser.add_argument("--output", type=Path, default=ROOT / "dist")
+    parser.add_argument("--appimagetool", type=Path)
+    args = parser.parse_args()
+    bundle = args.bundle.resolve()
+    if not (bundle / "models/origins.json").is_file():
+        parser.error("First create and verify the source/model bundle.")
+    if sys.platform not in ("win32", "linux"):
+        parser.error("Build on Windows x64 or Linux x64.")
+    output = args.output.resolve()
+    output.mkdir(parents=True, exist_ok=True)
+    work = ROOT / "build/standalone"
+    frozen = work / "dist"
+    env = dict(
+        os.environ,
+        FISH_SOURCE_BUNDLE=str(bundle),
+        QT_API="pyside6",
+        CUDA_VISIBLE_DEVICES="-1",
+    )
+    if os.name == "nt":
+        env["FISH_WINDOWS_CRT"] = str(windows_crt())
+        from PIL import Image, ImageDraw
+
+        image = Image.new("RGBA", (256, 256), "#101c2b")
+        drawing = ImageDraw.Draw(image)
+        drawing.ellipse((40, 35, 216, 221), fill="#143c45", outline="#4ee5c3", width=10)
+        drawing.ellipse((90, 90, 120, 120), fill="#f9de66")
+        drawing.ellipse((140, 140, 162, 162), fill="#f9de66")
+        image.save(
+            ROOT / "packaging/fish.ico",
+            sizes=[(16, 16), (32, 32), (48, 48), (256, 256)],
+        )
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "PyInstaller",
+            "--noconfirm",
+            "--clean",
+            "--distpath",
+            str(frozen),
+            "--workpath",
+            str(work / "pyinstaller"),
+            str(ROOT / "packaging/FISH-Analysis.spec"),
+        ],
+        env=env,
+        cwd=ROOT,
+        check=True,
+    )
+    if os.name == "nt":
+        target = output / f"FISH-Analysis-{args.tag}-windows-x64.exe"
+        shutil.copy2(frozen / "FISH-Analysis.exe", target)
+    else:
+        appdir = work / "FISH-Analysis.AppDir"
+        if appdir.exists():
+            shutil.rmtree(appdir)
+        (appdir / "usr").mkdir(parents=True)
+        shutil.move(str(frozen / "FISH-Analysis"), appdir / "usr/FISH-Analysis")
+        for source, name in [
+            ("AppRun", "AppRun"),
+            ("fish-analysis.desktop", "fish-analysis.desktop"),
+            ("fish.svg", "fish-analysis.svg"),
+        ]:
+            shutil.copy2(ROOT / "packaging" / source, appdir / name)
+        (appdir / "AppRun").chmod(0o755)
+        tool = (
+            args.appimagetool.resolve()
+            if args.appimagetool
+            else work / "appimagetool.AppImage"
+        )
+        if not tool.exists():
+            urllib.request.urlretrieve(APPIMAGE_URL, tool)
+        with tool.open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        if digest != APPIMAGE_SHA256:
+            raise RuntimeError(
+                "AppImage build tool checksum differs from the pinned release."
+            )
+        tool.chmod(0o755)
+        target = output / f"FISH-Analysis-{args.tag}-linux-x64.AppImage"
+        subprocess.run(
+            [
+                str(tool),
+                "--appimage-extract-and-run",
+                "--no-appstream",
+                str(appdir),
+                str(target),
+            ],
+            env=dict(env, ARCH="x86_64"),
+            check=True,
+        )
+        target.chmod(0o755)
+    versions = {
+        dist.metadata["Name"]: dist.version
+        for dist in importlib.metadata.distributions()
+    }
+    (output / f"{target.name}.build.json").write_text(
+        json.dumps(
+            {
+                "platform": sys.platform,
+                "python": sys.version,
+                "versions": versions,
+                "models": json.loads((bundle / "models/origins.json").read_text()),
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    print(json.dumps({"executable": str(target), "bytes": target.stat().st_size}))
+
+
+if __name__ == "__main__":
+    main()

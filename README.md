@@ -1,5 +1,10 @@
 # FISH Viewer
 
+Download the **single Windows EXE or Linux AppImage** from
+[GitHub Releases](https://github.com/Rokoel/cell-nn/releases/latest) to run
+FISH Analysis with bundled models and CPU runtimes, without installing Python.
+See [standalone launch instructions](docs/releasing.md).
+
 For the final automatic workflow, launch **`./run-analysis.sh`** (Linux) or
 **`run-analysis.bat`** (Windows). **FISH Analysis** is a separate, focused app that
 detects cells and signals, removes cells without signals, measures A–B distances

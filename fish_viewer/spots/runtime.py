@@ -9,6 +9,10 @@ DIRECT_ENGINES = ('signal-center-unet3d', 'signal-spotiflow3d')
 
 
 def interpreter():
+    if getattr(sys, 'frozen', False):
+        # The same bundled executable dispatches the PyTorch worker without
+        # requiring a separate interpreter or inheriting a developer's override.
+        return sys.executable
     configured = os.environ.get('FISH_SPOTS_PYTHON')
     if configured:
         path = Path(configured).expanduser()

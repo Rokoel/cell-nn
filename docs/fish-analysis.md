@@ -1,11 +1,22 @@
 # FISH Analysis
 
-Run `./run-analysis.sh` on Linux or `run-analysis.bat` on Windows. This focused
+Download the standalone Windows EXE or Linux AppImage from the GitHub release.
+For source installations, run `./run-analysis.sh` on Linux or `run-analysis.bat`
+on Windows. This focused
 app processes cells and signals, retains cells with signals, measures nearest
 3D membrane distances, and exports Imaris and Excel files. Training belongs in
 the Viewer/Annotator tools; Analysis has no training buttons or model pickers.
 
 ## Installation
+
+The standalone EXE/AppImage includes Python, CPU neural runtimes and models.
+Double-click the EXE on Windows 10/11 x64. On Linux x64 (Ubuntu 22.04+), make the
+AppImage executable and launch it. If FUSE is unavailable, launch with
+`APPIMAGE_EXTRACT_AND_RUN=1 ./FISH-Analysis-v<version>-linux-x64.AppImage`.
+These builds do not need setup scripts or dependency downloads. See
+[release instructions](releasing.md) for details.
+
+For a source installation:
 
 Use Python 3.12. The launch scripts set up the application environment on first
 use; an internet connection is needed to download dependencies. Run
