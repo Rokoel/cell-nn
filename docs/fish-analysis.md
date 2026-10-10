@@ -89,6 +89,36 @@ Leave the boundary field empty to use the original StarDist contours; the new
 center/box detector requires a boundary model. See [boundary refinement](boundary-refinement.md) for
 training, safeguards and saved acceptance/fallback information.
 
+Under **Models and device**, **Use sensitive StarDist hybrid** selects the original
+sensitive StarDist checkpoint, the surface-loss crop U-Net, and the signal-center
+U-Net. **Redraw StarDist proposals** preserves the saved detector sensitivity
+and uses StarDist masks only to obtain padded boxes and interior seeds. The crop
+U-Net draws new masks from membrane pixels, without a roundness filter. Empty,
+weakly supported, incomplete and duplicate contours are rejected; rejected
+proposals never retain their StarDist masks. Signals, filtering, A–B measurements
+and the two-sheet Excel export then run as usual.
+
+This is a selectable experiment; the center/box pipeline remains the default.
+The preset finds `models/cells-sensitive` if installed, or the original sensitive
+training checkpoint in this workspace. It is disabled if that checkpoint is
+absent. It does not substitute the balanced `models/cells` model. You can also
+select your own StarDist checkpoint and enable **Redraw StarDist proposals**.
+The preset turns off center/box recovery, which requires the center/box detector.
+**Use bundled center and crop models** returns to the default detector and turns
+off StarDist proposal redrawing. See [hybrid evaluation](stardist-hybrid.md).
+
+**Use both-detector consensus** selects the hybrid models and enables
+**Require both cell detectors**. Both cell pipelines run on the scan, using the
+same surface-loss contour model. Whole hybrid contours are retained only when
+matched one-to-one to center/box contours at full-instance IoU ≥ 0.5. This does
+not intersect or shrink the masks. Signal detection and measurements run after
+agreement filtering. Two additional progress stages show the second cell
+pipeline and the agreement filter. Saved reports record both model runs and
+matched IDs/IoUs; Excel retains exactly the two measurement sheets.
+The consensus preset is optional and leaves the default unchanged. Selecting
+**Use sensitive StarDist hybrid** turns off consensus, and **Use bundled center
+and crop models** returns to the original default. See [consensus results](cell-consensus.md).
+
 An optional **Snap to membrane (experimental)** checkbox under **Models and device**
 adds local cell-channel brightness refinement before signal detection. It searches
 up to 0.30 µm along boundary normals and moves points halfway toward supported
@@ -208,3 +238,19 @@ To rebuild the source/model bundle, run
 The [direct signal-center models](signal-centers.md) predict learned center heatmaps
 without the image candidate finder. The standard setup installs their runtime;
 existing installations should rerun setup when upgrading to v0.4.0.
+
+## Annotation-trained boundary guidance
+
+Enable **Learned boundary guidance (experimental)** under processing options to
+use `models/boundary-annotations` for bounded 3D contour corrections. The default
+cell detector, surface-loss contour model and signal-center model stay selected.
+The option is off by default: the complete held-out benchmark found a small
+volume improvement on shared cell references and no distance improvement.
+See [model usage](annotation-boundary-model.md) and
+[complete results](../reports/annotation-boundary/README.md).
+
+Launch the separate single-image annotator with `run-annotator.sh` (Linux) or
+`run-annotator.bat` (Windows). It requires your training-split audit and scans;
+these are not included in releases. Use `--audit` and `--fish-root` to relocate
+them. It supports two brush categories, Fill, eraser and Ctrl+Z; unknown pixels
+remain ignored. See [annotation guide](training-annotator.md).

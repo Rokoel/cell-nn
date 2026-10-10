@@ -50,7 +50,7 @@ class MembraneConfig:
         return self
 
 
-def snap_cell(mask, image, spacing, occupied, config):
+def snap_cell(mask, image, spacing, occupied, config, guidance=None):
     """Find nearby peaks along outward normals and move a closed 3D mesh.
 
     Both inward and outward corrections are possible. Weak/flat profiles and
@@ -66,7 +66,7 @@ def snap_cell(mask, image, spacing, occupied, config):
     gradient = np.gradient(signed, *spacing)
     normals = np.column_stack([ndi.map_coordinates(g, points.T, order=1, mode='nearest') for g in gradient])
     normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-8)
-    visible = ndi.gaussian_filter(image.astype(np.float32), config.blur_um / spacing)
+    visible = ndi.gaussian_filter((image if guidance is None else guidance).astype(np.float32), config.blur_um / spacing)
     # Include extra context beyond the allowed search, used only for prominence.
     count = max(3, int(np.ceil(config.max_shift_um / .05)))
     offsets = np.linspace(-config.max_shift_um, config.max_shift_um, 2 * count + 1)
@@ -128,6 +128,8 @@ def snap_cell(mask, image, spacing, occupied, config):
         reason = 'Large unsupported volume change'
     elif euler_number(proposed, connectivity=3) != euler_number(mask, connectivity=3):
         reason = 'Refinement changes cell topology'
+    elif guidance is not None and (evidence['surface_support'] < .25 or evidence['surface_contrast'] < .01):
+        reason = 'Learned boundary lacks support in the raw cell channel'
     elif evidence['surface_support'] < baseline_evidence['surface_support'] - .03 or evidence['surface_contrast'] < baseline_evidence['surface_contrast'] - .005:
         reason = 'Refinement reduced visible membrane evidence'
     elif np.array_equal(proposed, mask):
@@ -138,7 +140,7 @@ def snap_cell(mask, image, spacing, occupied, config):
     return (proposed if reason is None else mask), diagnostic
 
 
-def snap(labels, prepared, config=None, emit=lambda e: None, cancel=None):
+def snap(labels, prepared, config=None, emit=lambda e: None, cancel=None, guidance=None):
     config = (config or MembraneConfig()).validate()
     if labels.shape != prepared.image.shape:
         raise ValueError('Membrane image and contours must use the same voxel grid.')
@@ -149,6 +151,9 @@ def snap(labels, prepared, config=None, emit=lambda e: None, cancel=None):
         raise ValueError('Positive, finite ZYX voxel spacing is required.')
     if not np.isfinite(prepared.image).all():
         raise ValueError('Non-finite membrane pixels.')
+    if guidance is not None and (guidance.shape != labels.shape or not np.isfinite(guidance).all()
+                                 or np.any(guidance < 0) or np.any(guidance > 1)):
+        raise ValueError('Boundary guidance must be finite probabilities on the contour grid.')
     result = labels.copy()
     boxes = ndi.find_objects(labels)
     ids = [i for i, box in enumerate(boxes, 1) if box is not None]
@@ -163,7 +168,8 @@ def snap(labels, prepared, config=None, emit=lambda e: None, cancel=None):
         original = labels[region] == cell
         # Protect all original neighbors as well as refinements already accepted.
         occupied = ((labels[region] != 0) & ~original) | ((result[region] != 0) & (result[region] != cell))
-        proposed, diagnostic = snap_cell(original, prepared.image[region], prepared.spacing, occupied, config)
+        proposed, diagnostic = snap_cell(original, prepared.image[region], prepared.spacing, occupied, config,
+                                        None if guidance is None else guidance[region])
         if diagnostic['accepted']:
             result[region][original] = 0
             result[region][proposed] = cell
@@ -172,7 +178,7 @@ def snap(labels, prepared, config=None, emit=lambda e: None, cancel=None):
     return result, diagnostics
 
 
-def apply(cells_report, output, config=None, emit=lambda e: None, cancel=None, audit=None):
+def apply(cells_report, output, config=None, emit=lambda e: None, cancel=None, audit=None, boundary_model=None, device='auto'):
     """Process saved contours; retain the entire baseline run for comparison."""
     config = (config or MembraneConfig()).validate()
     directory = new_run_directory(output, 'membrane-snap')
@@ -188,6 +194,14 @@ def apply(cells_report, output, config=None, emit=lambda e: None, cancel=None, a
     emit(dict(kind='run_started', directory=str(directory)))
     _json(directory / 'report.json', report)
     try:
+        predictor = None
+        if boundary_model:
+            from ..boundary.inference import BoundaryPredictor
+            from dataclasses import replace
+            predictor = BoundaryPredictor(boundary_model, device)
+            config = replace(config, min_peak=max(config.min_peak, predictor.manifest['threshold']))
+            report.update(engine='learned-boundary-guidance', config=asdict(config),
+                          boundary_model=str(predictor.directory), boundary_checkpoint_sha256=predictor.sha256)
         source = json.loads(Path(cells_report).read_text())
         if source['status'] != 'complete':
             raise ValueError('Completed cell inference is required.')
@@ -232,9 +246,16 @@ def apply(cells_report, output, config=None, emit=lambda e: None, cancel=None, a
                                              order=1, mode='nearest', prefilter=False)
                 prepared = Prepared(image, tuple(metadata['spacing_zyx']), tuple(metadata['origin_xyz']), metadata['channel'],
                                     metadata['channel_scores'], fingerprint, {}, {})
-            result, diagnostics = snap(labels, prepared, config, notify, cancel)
+            guidance = predictor.volume(prepared.image, prepared.spacing, notify, cancel) if predictor else None
+            result, diagnostics = snap(labels, prepared, config, notify, cancel, guidance)
             metadata['membrane_snap'] = dict(config=asdict(config), cells=diagnostics,
                 policy='Bounded local normal-direction membrane attraction. Failed refinements retain original contours. No new cells; no roundness filter.')
+            if predictor:
+                metadata['membrane_snap'].update(boundary_model=str(predictor.directory),
+                    boundary_checkpoint_sha256=predictor.sha256,
+                    policy='Learned 2D boundary probabilities guide bounded, smooth 3D normal displacements. '
+                           'Original raw membrane evidence, topology, cell cores and non-overlap remain safety gates. '
+                           'Rejected changes retain the baseline; no new cells.')
             props = {c['label']: c for c in metadata.get('cells', [])}
             metadata['cells'] = []
             metadata.pop('metrics', None)
@@ -274,16 +295,30 @@ def main():
     parser.add_argument('--cells-report', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--audit', type=Path)
+    parser.add_argument('--boundary-model', type=Path, help='Optional trained sparse 2D boundary U-Net guidance')
+    parser.add_argument('--device', choices=['auto', 'cpu', 'gpu'], default='auto')
     parser.add_argument('--max-shift', type=float, default=MembraneConfig.max_shift_um)
     parser.add_argument('--strength', type=float, default=MembraneConfig.strength)
     parser.add_argument('--config-file', type=Path, help='JSON object with MembraneConfig settings')
     parser.add_argument('--cancel-file', type=Path)
     args = parser.parse_args()
+    if args.boundary_model:
+        import os
+        import sys
+        import sysconfig
+        if sys.platform.startswith('linux') and not os.environ.get('FISH_CUDA_PATH_READY'):
+            libraries = sorted((Path(sysconfig.get_paths()['purelib']) / 'nvidia').glob('*/lib'))
+            if libraries:
+                env = os.environ.copy()
+                env['FISH_CUDA_PATH_READY'] = '1'
+                env['LD_LIBRARY_PATH'] = os.pathsep.join(map(str, libraries)) + os.pathsep + env.get('LD_LIBRARY_PATH', '')
+                os.execve(sys.executable, [sys.executable, '-m', 'fish_viewer.refinement.membrane', *sys.argv[1:]], env)
     cancel = Cancellation(args.cancel_file)
     signal.signal(signal.SIGINT, lambda *_: cancel.event.set())
     config = MembraneConfig(**json.loads(args.config_file.read_text())) if args.config_file else MembraneConfig(max_shift_um=args.max_shift, strength=args.strength)
     report = apply(args.cells_report, args.output, config,
-                   lambda e: print(json.dumps(e, allow_nan=False), flush=True), cancel, args.audit)
+                   lambda e: print(json.dumps(e, allow_nan=False), flush=True), cancel, args.audit,
+                   args.boundary_model, args.device)
     return 0 if report['status'] == 'complete' else 1
 
 

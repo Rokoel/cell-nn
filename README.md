@@ -8,14 +8,18 @@ to each cell border, and saves Imaris files and CSVs automatically. See the
 
 The default pipeline uses the **3D center/box detector → surface-trained crop
 U-Net → 3D signal-center U-Net** (`models/proposals`,
-`models/refinement-bias-candidate`, `models/signals-center-unet`). On fixed test
-comparisons, contour volume error improved from 9.63% to 7.98% across 314 matched
-cells, and from 7.88% to 5.71% for 150 matched cells containing signals. Distance
-MAE improved from 0.129 to 0.112 µm for 140 frozen signal centers. The paired
-experiment retains original masks on rejected edits; fresh app inference uses
-its normal rejection rules. See [reports and graphs](reports/contour-bias/README.md)
-for cohorts and limitations. Linux/Windows releases include both apps, the
-latest models, and previous checkpoints for comparison.
+`models/refinement-bias-candidate`, `models/signals-center-unet`). The full 144-scan held-out comparison gives 5.70% matched volume MAPE and
+0.116 µm distance MAE for this default; incomplete manual cell annotations do
+not establish cell precision. See [full results](reports/all-heldout-comparison/README.md).
+
+The release also includes a [single-image training annotator](docs/training-annotator.md)
+(`run-annotator.sh` / `run-annotator.bat`) and an optional boundary-recognition
+U-Net trained from 45 brush-annotated crops. Enable **Learned boundary guidance
+(experimental)** in Analysis to guide existing 3D contours. On the same 496
+matched cells, volume MAPE changed from 5.71% to 5.59%; distance accuracy was
+essentially unchanged, so the option remains off by default.
+[Results and training curves](reports/annotation-boundary/README.md).
+Linux/Windows releases include all three apps, eleven model folders and reports.
 
 A Python desktop viewer with classical and neural 3D cell contour pipelines for Imaris microscopy stacks. Uses **PySide6 + PyVista/VTK** on Linux and Windows. Images and original annotations are opened read-only.
 

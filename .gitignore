@@ -12,4 +12,5 @@ pipeline_runs/
 neural_runs/
 workflow_runs/
 signal_runs/
+training_annotations/
 *.fish-view.json

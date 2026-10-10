@@ -279,6 +279,8 @@ def apply(image,scene,cell_predictions,model_directory,output,device='auto',emit
             report['cell_detector']=metadata['detector']
         if metadata.get('refinement'):
             report['boundary_refinement']=metadata['refinement']
+        if 'consensus' in metadata:
+            report['cell_consensus']=metadata['consensus']
         if metadata.get('membrane_snap'):
             report['membrane_snap']=metadata['membrane_snap']
         progress('Loading signal channels',0,1)

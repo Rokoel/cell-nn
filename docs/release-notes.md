@@ -1,80 +1,42 @@
-# FISH Analysis v0.4.1
+# FISH Analysis v0.5.0
 
-The default pipeline now combines:
+This release adds the training-image annotator, a boundary-recognition U-Net trained from its annotations, and optional learned guidance for existing 3D contours. The established default remains the center/box detector → surface-loss contour U-Net → signal-center U-Net. Learned guidance, sensitive StarDist hybrid, consensus, membrane snapping and cell recovery remain experimental options.
 
-- **Cells:** `models/proposals` — 3D center/box detector.
-- **Boundaries:** `models/refinement-bias-candidate` — surface-trained crop 3D U-Net,
-  selected epoch 5, cutoff 0.55, 2 µm padding and 64³ input.
-- **Signals:** `models/signals-center-unet` — direct signal-center heatmap U-Net.
+Linux and Windows source/model ZIPs include all three apps (Analysis, Viewer and Annotator), eleven model folders, launch/setup scripts, evaluation reports and model checksums. Python 3.12 and internet access for initial dependency setup are required. Windows inference uses CPU; Linux also supports GPU setup. Original FISH scans, training caches and user annotation images are not distributed.
 
-The previous contour model remains at `models/refinement`. Former bundled model
-selections migrate once; custom choices are preserved. Experimental membrane
-snapping remains off by default. Linux and Windows bundles include both desktop
-apps, all nine model folders, reports/graphs, setup/launch scripts and model
-checksums. Python 3.12 and internet access for initial setup are required.
+## New annotation and boundary tools
 
-## Latest contour and distance metrics
+- Annotate a random single-image crop from the saved training split using only the audited cell channel. Mark “Likely cell border” or “Likely not cell border” with translucent brushes, eraser, Fill, Clear all and Ctrl+Z undo. Zoom/pan and brightness controls are included.
+- Save & next persists original cell-channel pixels, labels and calibrated source coordinates. Skip discards all current marks. Untouched pixels remain unknown and contribute no training loss.
+- The new 121,969-parameter boundary U-Net was refitted on all 45 annotated crops from 40 scans / 32 acquisition groups for 35 epochs. A separate development checkpoint used 37 training crops and eight validation crops from disjoint acquisition groups. On labeled validation pixels it achieved **71.7% precision, 81.9% recall, 76.5% F1 and 61.9% IoU** at threshold 0.6. These scores describe broad brush bands, not exact measurement surfaces; they are not scores from the final all-annotation refit.
+- Analysis → processing options → **Learned boundary guidance (experimental)** uses those predictions for bounded, smooth 3D contour corrections. Raw membrane evidence, topology, cell cores and non-overlap remain acceptance checks. It creates no new cell instances. Signal-model weights are unchanged.
+- The annotator requires the original dataset and a saved training-split audit; use `--audit` and `--fish-root` when relocating them. Launch with `run-annotator.sh` / `run-annotator.bat`.
 
-All 71 test scans were processed after freezing the validation model and cutoff.
-The following paired comparisons include all outliers:
+## Full held-out pipeline comparison
 
-| Measure | Previous contour model | New contour model |
-| --- | ---: | ---: |
-| Volume MAPE, 314 fixed matched cells | 9.63% | **7.98%** |
-| Median absolute volume percentage error, 314 cells | 6.36% | **5.50%** |
-| Mean signed volume error, 314 cells | −5.78% | **−4.26%** |
-| Mean symmetric surface disagreement | 0.159 µm | **0.146 µm** |
-| Volume MAPE, 150 fixed signal-containing matched cells | 7.88% | **5.71%** |
-| Distance MAE, 140 fixed U-Net signal centers | 0.129 µm | **0.112 µm** |
-| Distance RMSE, same 140 centers | 0.177 µm | **0.153 µm** |
-| Median absolute relative distance error | 22.29% | **19.08%** |
+All **144 held-out scans** were tested: 71 test and 73 validation scans. Counts below refer to complete manual cells matched at IoU ≥0.5 before signal filtering. Volume/distance errors are conditional on matched complete cells with accepted signals; all outliers are retained. Different methods have different matched subsets.
 
-The acquisition-group bootstrap 95% interval for volume MAPE improvement is
-**1.08–2.25 percentage points**; for distance MAE improvement it is
-**0.006–0.033 µm**. Undersizing is reduced, not eliminated.
+| Pipeline | Cells detected before signal filtering | Complete manual cells matched | Volume MAPE | Distance MAE |
+|---|---:|---:|---:|---:|
+| Current default | 9,826 | 758 | **5.70%** (499 cells) | **0.116 µm** (396 signals) |
+| Sensitive StarDist → surface-loss contours → signal U-Net | 18,285 | 869 | 8.97% (539 cells) | 0.136 µm (442 signals) |
+| Both-detector consensus | 9,004 | 729 | 7.88% (463 cells) | 0.126 µm (375 signals) |
+| Current default + learned boundary guidance | 9,826 | 760 | 5.70% (502 cells) | 0.117 µm (396 signals) |
 
-All 314 original manual matches remain at IoU ≥0.5. The paired experiment keeps
-all 4,513 baseline cell identities, applies 4,384 guarded border edits, and retains
-129 original masks when an edit fails. Fresh app inference uses its normal
-rejection/neighbor rules and does not automatically fall back to the old model.
-These are conditional fixed-cell border comparisons, **not a complete fresh-run
-detection benchmark**. Signal centers are frozen, and one center outside its new
-mask remains scored and flagged. The live app keeps signals only when their
-centers lie inside a predicted cell. No roundness constraint is imposed.
+The sensitive model is now bundled as `models/cells-sensitive`; its proposal masks supply boxes/seeds, and failed contour predictions are rejected. Consensus keeps whole hybrid contours only where both approaches match at IoU ≥0.5; it does not intersect their voxels.
 
-Training visited all 1,493 complete marked training cells per epoch, with actual
-predicted crops for matched cells. Surface loss and production-like training
-crops were changed together; the gain cannot be attributed to surface loss alone.
-Asymmetric-loss and residual-correction trials failed to improve their parent
-and are not defaults. Model selection used validation data only; the historical
-test split has been reused in earlier experiments, so results remain exploratory.
+### Learned guidance on the same references
 
-## Signal detection metrics
+Across the same **496 matched complete cells**, volume MAPE decreased **5.71% → 5.59%**. The paired change was −0.122 percentage points (acquisition-group bootstrap 95% interval −0.225 to −0.013). On the same **393 manual signals**, distance error was effectively unchanged (paired MAE change −0.000057 µm; 95% interval −0.001385 to +0.001144). This is a small volume improvement, not a demonstrated distance improvement or substantial overall gain, so guidance stays off by default.
 
-The signal model and detector checkpoint are unchanged. The earlier scored-region
-comparison found **163/228 manual signals**, **79.9% precision**, **71.5% recall**,
-and **0.147 µm matched-center RMSE**. Those detection figures were obtained with
-the previous contours and have not been remeasured for the new combination.
-Unknown/unmarked regions are excluded from signal scoring and supervision.
+Test-only results (71 scans): current default **6.59% volume MAPE / 0.112 µm distance MAE**; learned guidance **6.63% / 0.115 µm**. On the same 188 test-cell references, volume MAPE improved **6.58% → 6.39%**. In the guidance comparison, baseline cell detections were reused; guidance, signal inference, filtering and physical mesh measurements were freshly executed. The 144-scan default/hybrid/consensus comparison freshly ran both detector pipelines, with consensus reusing their cell sets and rerunning signals/measurements.
 
-## Analysis, exports and verification
+Manual cell annotations are incomplete, so unmatched detections cannot establish cell precision. Validation influenced earlier model selection, and test acquisitions were previously inspected in exploratory comparisons; this is not a new blind cohort. Brush-band recognition metrics must not be interpreted as volume/distance accuracy.
 
-The workflow remains contours → signals → remove empty cells → nearest surface
-B points/A–B lines → Imaris, CSV and Excel. Excel includes volumes, per-channel
-counts, signal scores, coordinates and distances. Both signal channels are
-processed separately; a cell is retained if it contains at least one accepted
-signal in any channel. Imaris exports preserve source image data and the FISH
-Imaris 6.3.1 scene profile.
+## Exports and verification
 
-Local release verification passed **164 tests** (6 optional-runtime skips),
-all nine bundled checkpoints on CPU, and a fresh GUI run with the new defaults.
-The new candidate passed seven synthetic empty/background controls, including
-forced proposals. Local CPU GUI checks passed 2D/3D display, real signal detection,
-shortest-border geometry, Excel and Imaris exports, and unchanged source pixels.
-Native Imaris opening was not available locally. GitHub Actions tests readers,
-geometry, losses, default migration and all checkpoints on Linux and Windows
-before publishing the source/model bundles and SHA256SUMS.txt.
+Excel exports contain exactly two sheets: **Cell volumes** and **Signal distances**, with manual/NN measurements and signal channels where available. Both signal channels are processed; cells are retained when at least one accepted signal lies inside them in any channel. The pipeline creates nearest-surface B points and A–B distance lines. Imaris image data and the compatible FISH scene structure are preserved.
 
-Detailed comparisons, training curves, distributions, overlays, protocols and
-verification records are bundled under `reports/contour-bias`; earlier signal
-metrics remain under `reports/signal-centers`.
+GitHub Actions tests and loads the bundled checkpoints on Linux and Windows, verifies the packaged copies, and publishes both ZIPs plus SHA256SUMS.txt only after both builds pass. Local verification includes the masked-loss unknown-pixel gradient, annotation fill/undo/save/skip behavior, geometry/Excel checks, and a native GUI run through learned guidance, signals, filtering, measurements, Imaris/Excel export and 2D/3D display. Native Imaris opening is not covered by those checks.
+
+Detailed results and training curves are bundled under `reports/all-heldout-comparison` and `reports/annotation-boundary`; usage is in `docs/training-annotator.md` and `docs/annotation-boundary-model.md`.

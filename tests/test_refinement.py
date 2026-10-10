@@ -143,3 +143,32 @@ def test_analysis_refinement_progress_has_six_stages(qapp,tmp_path):
         assert window.overall.value()==1250
         assert window.boundary_model.placeholderText()=='Optional 3D U-Net model folder'
     finally:window.close();qapp.processEvents()
+
+
+def test_redrawn_proposals_never_fall_back_to_detector_masks():
+    from fish_viewer.refinement.inference import redraw_proposals
+    labels=np.zeros((32,)*3,np.uint32);labels[10:22,10:22,10:22]=7
+    prepared=SimpleNamespace(image=np.zeros(labels.shape,np.float32),spacing=(.3,)*3,origin=(1.,2.,3.))
+    config=replace(RefinementConfig(),patch_size=32)
+    class EmptyModel:
+        def __call__(self,x,training=False):return np.full((1,32,32,32,1),-20.)
+    result,diagnostics=redraw_proposals(labels,prepared,EmptyModel(),config)
+    assert not result.any()
+    assert len(diagnostics)==1 and not diagnostics[0]['accepted']
+    assert diagnostics[0]['proposal_id']==7
+    assert np.allclose(diagnostics[0]['box_low_xyz'],[4.,5.,6.])
+    assert np.array_equal(labels[10:22,10:22,10:22],np.full((12,)*3,7))
+
+
+def test_redrawn_positive_network_output_on_blank_image_is_rejected():
+    from fish_viewer.refinement.inference import redraw_proposals
+    labels=np.zeros((40,)*3,np.uint32);labels[15:25,15:25,15:25]=1
+    prepared=SimpleNamespace(image=np.zeros(labels.shape,np.float32),spacing=(.3,)*3,origin=(0.,)*3)
+    config=replace(RefinementConfig(),patch_size=32)
+    class HallucinatedCell:
+        def __call__(self,x,training=False):
+            r=np.linalg.norm(np.indices((32,)*3)-15.5,axis=0)
+            return np.where(r<9,20.,-20.)[None,...,None]
+    result,diagnostics=redraw_proposals(labels,prepared,HallucinatedCell(),config)
+    assert not result.any()
+    assert diagnostics[0]['rejection_reason']=='Insufficient visible membrane evidence'

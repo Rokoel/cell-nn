@@ -19,6 +19,7 @@ def main():
             env['LD_LIBRARY_PATH']=os.pathsep.join(map(str,libraries))+os.pathsep+env.get('LD_LIBRARY_PATH','')
             os.execve(sys.executable,[sys.executable,'-m','fish_viewer.refinement',*sys.argv[1:]],env)
     parser=argparse.ArgumentParser(description='Train or apply a seeded 3D U-Net boundary model.')
+    parser.add_argument('--redraw-proposals',action='store_true',help='Use detector boxes/seeds only; reject failed contours without fallback')
     parser.add_argument('--mode',choices=['train','apply'],required=True)
     parser.add_argument('--audit',type=Path)
     parser.add_argument('--cache',type=Path)
@@ -48,7 +49,7 @@ def main():
         if not args.cells_report or not args.model:
             parser.error('Application requires --cells-report and --model.')
         from .inference import apply
-        report=apply(args.cells_report,args.model,args.output,args.device,emit,cancel,args.audit)
+        report=apply(args.cells_report,args.model,args.output,args.device,emit,cancel,args.audit,redraw=args.redraw_proposals)
     return 0 if report['status']=='complete' else 1
 
 

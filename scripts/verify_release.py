@@ -37,7 +37,7 @@ def main():
         parser.error('The release must include models/origins.json with model checksums.')
     if provenance.exists():
         origins = json.loads(provenance.read_text())
-        if args.require_latest_models and not {'cells', 'signals', 'proposals', 'refinement', 'refinement-bias-candidate', 'signals-center-unet'}.issubset(origins):
+        if args.require_latest_models and not {'cells', 'cells-sensitive', 'signals', 'proposals', 'refinement', 'refinement-bias-candidate', 'signals-center-unet', 'boundary-annotations'}.issubset(origins):
             parser.error('Missing model provenance for a required checkpoint.')
         for label,info in origins.items():
             for name,digest in info['sha256'].items():
@@ -49,6 +49,19 @@ def main():
     cell_model.load_weights(manifest['checkpoint'])
     probability,distances=cell_model.predict(np.zeros((16,16,16),np.float32),axes='ZYX',verbose=0)
     assert np.isfinite(probability).all() and np.isfinite(distances).all()
+    sensitive = ROOT / 'models/cells-sensitive'
+    sensitive_model = StarDist3D(None, name=sensitive.name, basedir=str(sensitive.parent))
+    sensitive_manifest = json.loads((sensitive/'fish-model.json').read_text())
+    sensitive_model.load_weights(sensitive/sensitive_manifest['checkpoint'])
+    sensitive_probability, sensitive_distances = sensitive_model.predict(np.zeros((16,16,16),np.float32),axes='ZYX',verbose=0)
+    assert np.isfinite(sensitive_probability).all() and np.isfinite(sensitive_distances).all()
+    from fish_viewer.boundary.model import network as learned_network, read_model as read_learned_model
+    learned_folder = ROOT/'models/boundary-annotations'
+    learned_manifest = read_learned_model(learned_folder)
+    learned = learned_network(tf)
+    learned.load_weights(learned_folder/learned_manifest['checkpoint'])
+    learned_output = learned(np.zeros((1,32,40,1),np.float32),training=False).numpy()
+    assert learned_output.shape == (1,32,40,1) and np.isfinite(learned_output).all()
     default_signal_manifest=json.loads((signals/'signal-model.json').read_text())
     legacy_signals=ROOT/'models/signals'
     signal_manifest=json.loads((legacy_signals/'signal-model.json').read_text())
@@ -115,6 +128,8 @@ def main():
     print(json.dumps(dict(status='complete',default_signal_model=signals.name,default_signal_engine=default_signal_manifest['engine'],runtime=info,cell_probability_shape=list(probability.shape),
                          default_boundary_model=Path(boundary).name if boundary else None,
                          signal_score=score.tolist(),boundary_logit_shape=boundary_shapes.get(Path(boundary).name if boundary else ''),
+                         learned_boundary_shape=list(learned_output.shape),
+                         sensitive_cell_probability_shape=list(sensitive_probability.shape),
                          boundary_models=boundary_shapes,proposal_shape=proposal_shape,signal_models=signal_shapes,direct_signal_controls=direct_controls)))
 
 

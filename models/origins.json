@@ -64,5 +64,23 @@
       "best.weights.h5": "56eb05c07cc08c2cdedaad27aa0f75774dc3d114f166ea3e2040844b617731c2",
       "refinement-model.json": "3620a857e2f7d650b70ba2136813db933f0b547c399b63d2c87ccf36bb398b8e"
     }
+  },
+  "cells-sensitive": {
+    "source": "artifacts/full-fish/training/neural-train-20260915-033619-354714/model",
+    "sha256": {
+      "best.weights.h5": "65b0b6dc5a383f4cd23601d07013016a0ed49c2704e5481547b409a913f92062",
+      "thresholds.json": "d8057c2fe0da76cb38bcf9d839629cdf87f6a8204b19e7935021a59e9b00097a",
+      "config.json": "8a91e9a14eba18e4e35afd0418571d1631c9373c318c15879adf32468573e02b",
+      "fish-model.json": "d808cf50fb672aeb9377626d90db792219cd4ebb80dbc5afb20661ec2a30ffdc"
+    }
+  },
+  "boundary-annotations": {
+    "source": "training_annotations (45 crops; acquisition-group-disjoint development and all-annotation refit)",
+    "sha256": {
+      "boundary-model.json": "29bcf35a7a75801b0f1786948a05659debc24d096dd2a36d2158d88bc0a803fc",
+      "training-report.json": "14b561fa27082ecfad2d9fcc9985f85a85f3640a8c935b1d1c71c061a0f67a38",
+      "boundary.weights.h5": "26cc2fa81c3927c043f992d6978989ec4a114146f8e55696a94e320d89b6b3a7",
+      "development.weights.h5": "982b2c0a8c46fceb5d4be66f69a09786fa9f37f49103e0ffaa176e9fa315aa68"
+    }
   }
 }

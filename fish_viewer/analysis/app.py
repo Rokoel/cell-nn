@@ -12,7 +12,7 @@ from ..models import LibraryEntry, Scene
 from ..reader import entry_for_path, load_dataset, scan_library
 from ..signals.overlays import read_signals
 from ..views import SliceView, VolumeView
-from .controller import AnalysisController, default_models, default_refinement_model, default_proposal_model, migrate_bundled_defaults, STAGES
+from .controller import AnalysisController, default_models, default_refinement_model, default_proposal_model, migrate_bundled_defaults, sensitive_stardist_model, STAGES
 
 
 class AnalysisWindow(QtWidgets.QMainWindow):
@@ -126,6 +126,12 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.membrane_snap.setToolTip('Move existing contour points along surface normals toward brighter cell-channel peaks. '
                                      'Weak or unsafe changes retain the original contour. Applies before signal detection and measurements.')
         form.addRow(self.membrane_snap)
+        self.learned_boundary_model = Path(__file__).resolve().parents[2] / 'models/boundary-annotations'
+        self.learned_boundary = QtWidgets.QCheckBox('Learned boundary guidance (experimental)')
+        self.learned_boundary.setChecked(str(self.settings.value('learned_boundary', 'false')).lower() == 'true')
+        self.learned_boundary.setToolTip('Use the 2D boundary U-Net trained from brush annotations to guide existing 3D contours. '
+                                        'Signal detection stays unchanged. Model: ' + str(self.learned_boundary_model))
+        form.addRow(self.learned_boundary)
         self.membrane_shift = QtWidgets.QDoubleSpinBox()
         self.membrane_shift.setRange(.05, .6)
         self.membrane_shift.setSingleStep(.05)
@@ -133,8 +139,9 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.membrane_shift.setValue(float(self.settings.value('membrane_shift_um', .3)))
         self.membrane_shift.setToolTip('Maximum local peak search distance in either direction. '
                                       'The contour moves halfway toward the supported peak.')
-        self.membrane_shift.setEnabled(self.membrane_snap.isChecked())
-        self.membrane_snap.toggled.connect(self.membrane_shift.setEnabled)
+        self.membrane_shift.setEnabled(self.membrane_snap.isChecked() or self.learned_boundary.isChecked())
+        for checkbox in (self.membrane_snap, self.learned_boundary):
+            checkbox.toggled.connect(lambda _: self.membrane_shift.setEnabled(self.membrane_snap.isChecked() or self.learned_boundary.isChecked()))
         form.addRow('Membrane search radius', self.membrane_shift)
         self.cell_recovery = QtWidgets.QCheckBox('Recover missed cells (experimental)')
         self.cell_recovery.setChecked(str(self.settings.value('cell_recovery', 'false')).lower() == 'true')
@@ -152,6 +159,30 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.bundled_cells_button.clicked.connect(lambda: (
             self.cell_model.setText(default_proposal_model()), self.boundary_model.setText(default_refinement_model())))
         form.addRow(self.bundled_cells_button)
+        self.stardist_proposals = QtWidgets.QCheckBox('Redraw StarDist proposals')
+        self.stardist_proposals.setChecked(str(self.settings.value('stardist_proposals', 'false')).lower() == 'true')
+        self.stardist_proposals.setToolTip('Keep the saved StarDist sensitivity, use its boxes and interior seeds, then redraw with the boundary model. Failed contours are discarded.')
+        form.addRow(self.stardist_proposals)
+        self.bundled_cells_button.clicked.connect(lambda: self.stardist_proposals.setChecked(False))
+        self.hybrid_button = QtWidgets.QPushButton('Use sensitive StarDist hybrid')
+        self.hybrid_button.setToolTip('Sensitive StarDist boxes/seeds → surface-loss crop U-Net → signal-center U-Net')
+        self.hybrid_button.setEnabled(bool(sensitive_stardist_model() and default_refinement_model()))
+        self.hybrid_button.clicked.connect(lambda: (
+            self.cell_model.setText(sensitive_stardist_model()),
+            self.boundary_model.setText(default_refinement_model()),
+            self.signal_model.setText(str(default_models()[1])),
+            self.stardist_proposals.setChecked(True), self.cell_recovery.setChecked(False)))
+        form.addRow(self.hybrid_button)
+        self.consensus_cells = QtWidgets.QCheckBox('Require both cell detectors')
+        self.consensus_cells.setChecked(str(self.settings.value('consensus_cells', 'false')).lower() == 'true')
+        self.consensus_cells.setToolTip('Keep whole hybrid contours only when a center/box contour matches at IoU ≥ 0.5. Never intersect or shrink the two masks.')
+        form.addRow(self.consensus_cells)
+        self.bundled_cells_button.clicked.connect(lambda: self.consensus_cells.setChecked(False))
+        self.hybrid_button.clicked.connect(lambda: self.consensus_cells.setChecked(False))
+        self.consensus_button = QtWidgets.QPushButton('Use both-detector consensus')
+        self.consensus_button.setEnabled(self.hybrid_button.isEnabled() and bool(default_proposal_model()))
+        self.consensus_button.clicked.connect(lambda: (self.hybrid_button.click(), self.consensus_cells.setChecked(True)))
+        form.addRow(self.consensus_button)
         self.bundled_signals_button = QtWidgets.QPushButton('Use bundled signal model')
         self.bundled_signals_button.clicked.connect(lambda: self.signal_model.setText(str(default_models()[1])))
         form.addRow(self.bundled_signals_button)
@@ -456,8 +487,11 @@ class AnalysisWindow(QtWidgets.QMainWindow):
             self.settings.setValue(key, widget.text())
         self.settings.setValue('device', self.device.currentText())
         self.settings.setValue('membrane_snap', self.membrane_snap.isChecked())
+        self.settings.setValue('learned_boundary', self.learned_boundary.isChecked())
         self.settings.setValue('membrane_shift_um', self.membrane_shift.value())
         self.settings.setValue('cell_recovery', self.cell_recovery.isChecked())
+        self.settings.setValue('stardist_proposals', self.stardist_proposals.isChecked())
+        self.settings.setValue('consensus_cells', self.consensus_cells.isChecked())
         self.sync_buttons()
         self.next_scan()
 
@@ -478,8 +512,11 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         try:
             self.controller.start(self.active_image, self.output.text(), self.cell_model.text(),
                                   self.signal_model.text(), self.device.currentText(), self.boundary_model.text().strip() or None,
-                                  membrane_snap=dict(max_shift_um=self.membrane_shift.value()) if self.membrane_snap.isChecked() else None,
-                                  recovery={} if self.cell_recovery.isChecked() else None)
+                                  membrane_snap=dict(max_shift_um=self.membrane_shift.value()) if self.membrane_snap.isChecked() or self.learned_boundary.isChecked() else None,
+                                  boundary_guidance=self.learned_boundary_model if self.learned_boundary.isChecked() else None,
+                                  recovery={} if self.cell_recovery.isChecked() else None,
+                                  stardist_proposals=self.stardist_proposals.isChecked(),
+                                  consensus_model=default_proposal_model() if self.consensus_cells.isChecked() else None)
         except Exception as exc:
             self.failed(str(exc))
 

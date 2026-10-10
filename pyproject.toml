@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fish-viewer"
-version = "0.4.1"
+version = "0.5.0"
 description = "Desktop viewer for Imaris microscopy images and saved cell annotations"
 requires-python = ">=3.11"
 dependencies = [
@@ -30,6 +30,7 @@ neural-gpu = ["stardist>=0.9.2,<0.10", "tensorflow[and-cuda]>=2.20,<2.22; sys_pl
 [project.scripts]
 fish-viewer = "fish_viewer.__main__:main"
 fish-analysis = "fish_viewer.analysis.__main__:main"
+fish-annotator = "fish_viewer.annotation.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["fish_viewer*"]

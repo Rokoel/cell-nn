@@ -68,12 +68,13 @@ def evaluate(labels, references, names, spacing, cancel=None):
     for a missed cell. Unmatched predictions remain unscored, not false positives.
     """
     n = len(references)
+    pred_sizes = np.bincount(labels.ravel())
+    predicted_count = int(np.count_nonzero(pred_sizes[1:]))
     if not n:
-        return dict(reference_count=0, predicted_count=int(labels.max()), matched_count=0,
+        return dict(reference_count=0, predicted_count=predicted_count, matched_count=0,
             mean_dice=None, mean_iou=None, detection_rate=None, boundary_rmse_um=None,
             boundary_hd95_um=None, pair_mask_mse=None, objective=None,
-            unscored_predictions=int(labels.max()), per_cell=[])
-    pred_sizes = np.bincount(labels.ravel())
+            unscored_predictions=predicted_count, per_cell=[])
     ious = np.zeros((n, max(0, len(pred_sizes)-1)), dtype=np.float64)
     intersections = np.zeros_like(ious)
     ref_sizes = []
@@ -120,11 +121,11 @@ def evaluate(labels, references, names, spacing, cancel=None):
         values = [row[key] for row in per_cell if row[key] is not None]
         return float(np.mean(values)) if values else None
     dice = mean('dice')
-    return dict(reference_count=n, predicted_count=int(labels.max()), matched_count=len(matches),
+    return dict(reference_count=n, predicted_count=predicted_count, matched_count=len(matches),
         mean_dice=dice, mean_iou=mean('iou'), detection_rate=mean('detected'),
         boundary_rmse_um=mean('boundary_rmse_um'), boundary_hd95_um=mean('boundary_hd95_um'),
         pair_mask_mse=mean('pair_mask_mse'), objective=1-dice,
-        unscored_predictions=int(labels.max())-len(matches), per_cell=per_cell)
+        unscored_predictions=predicted_count-len(matches), per_cell=per_cell)
 
 
 def aggregate(results):

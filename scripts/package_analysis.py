@@ -26,6 +26,7 @@ def main():
     shutil.copytree(ROOT / 'fish_viewer', destination / 'fish_viewer',
                     ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     for name in ('pyproject.toml', 'run_analysis.py', 'run-analysis.sh', 'run-analysis.bat',
+                 'run_annotator.py', 'run-annotator.sh', 'run-annotator.bat',
                  'run_viewer.py', 'run-viewer.sh', 'run-viewer.bat',
                  'setup-analysis.sh', 'setup-analysis.bat', 'setup-spots.sh', 'setup-spots.bat', 'requirements-spots.txt'):
         shutil.copy2(ROOT / name, destination / name)
@@ -55,6 +56,10 @@ def main():
     shutil.copy2(ROOT / 'scripts/compare_cell_pipelines.py', destination / 'scripts/compare_cell_pipelines.py')
     shutil.copy2(ROOT / 'scripts/evaluate_cell_contours.py', destination / 'scripts/evaluate_cell_contours.py')
     shutil.copy2(ROOT / 'scripts/check_cell_crop_controls.py', destination / 'scripts/check_cell_crop_controls.py')
+    for name in ('benchmark_all_heldout.py', 'summarize_all_heldout.py', 'plot_heldout_comparison.py',
+                 'benchmark_annotation_boundaries.py', 'summarize_annotation_boundaries.py',
+                 'benchmark_cell_consensus.py', 'benchmark_stardist_hybrid.py'):
+        shutil.copy2(ROOT / 'scripts' / name, destination / 'scripts' / name)
     (destination / 'docs').mkdir()
     for name in ('fish-analysis.md', 'imaris-export.md', 'signal-detection.md', 'neural-training.md', 'models.md'):
         shutil.copy2(ROOT / 'docs' / name, destination / 'docs' / name)
@@ -90,8 +95,17 @@ def main():
         shutil.copy2(ROOT / 'docs/signal-centers.md', destination / 'docs/signal-centers.md')
     if (ROOT / 'reports/signal-centers').exists():
         shutil.copytree(ROOT / 'reports/signal-centers', destination / 'reports/signal-centers')
+    for name in ('training-annotator', 'annotation-boundary-model', 'cell-consensus', 'stardist-hybrid'):
+        shutil.copy2(ROOT / 'docs' / (name + '.md'), destination / 'docs' / (name + '.md'))
+    for name in ('annotation-boundary', 'all-heldout-comparison', 'cell-consensus', 'stardist-hybrid'):
+        shutil.copytree(ROOT / 'reports' / name, destination / 'reports' / name)
     provenance = {}
     model_sources = [('cells', cells), ('signals', ROOT / 'models/signals')]
+    from fish_viewer.boundary.model import read_model as read_boundary_model
+    read_boundary_model(ROOT / 'models/boundary-annotations')
+    model_sources.append(('boundary-annotations', ROOT / 'models/boundary-annotations'))
+    check_models(ROOT / 'models/cells-sensitive', signals)
+    model_sources.append(('cells-sensitive', ROOT / 'models/cells-sensitive'))
     baseline_signals = ROOT / 'models/signals-base'
     if (baseline_signals / 'signal-model.json').is_file():
         model_sources.append(('signals-base', baseline_signals))

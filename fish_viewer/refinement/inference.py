@@ -110,7 +110,26 @@ def refine(labels, prepared, model, config, emit=lambda e:None, cancel=None, evi
     return result,diagnostics
 
 
-def apply(cells_report, model_directory, output, device='auto',emit=lambda e:None,cancel=None,audit=None):
+def redraw_proposals(labels, prepared, model, config, emit=lambda e: None, cancel=None,
+                     evidence_threshold=.65):
+    """Use detector instances only as boxes/seeds; rejected crops leave no mask."""
+    from ..proposals.inference import contour_proposals
+    spacing = np.asarray(prepared.spacing)
+    origin = np.asarray(prepared.origin)
+    proposals = []
+    for cell, box in enumerate(ndi.find_objects(labels), 1):
+        if box is None:
+            continue
+        low = np.array([s.start for s in box])
+        high = np.array([s.stop - 1 for s in box])
+        seed = seed_center(labels[box] == cell, spacing) + low
+        proposals.append(dict(proposal_id=cell, center_xyz=((seed * spacing)[::-1] + origin).tolist(),
+                             box_low_xyz=((low * spacing)[::-1] + origin).tolist(),
+                             box_high_xyz=((high * spacing)[::-1] + origin).tolist()))
+    return contour_proposals(prepared, proposals, model, config, emit, cancel, evidence_threshold)
+
+
+def apply(cells_report, model_directory, output, device='auto',emit=lambda e:None,cancel=None,audit=None,redraw=False):
     directory=new_run_directory(output,'boundary-apply')
     report=dict(version=1,engine='seeded-unet3d',mode='apply',status='running',directory=str(directory),
                 parent_cells_report=str(Path(cells_report).resolve()),model_directory=str(Path(model_directory).resolve()),
@@ -156,14 +175,19 @@ def apply(cells_report, model_directory, output, device='auto',emit=lambda e:Non
                 prepared=prepare_membrane(dataset,metadata['channel'],config,fingerprint)
             labels=resample_labels(old,np.asarray(metadata['spacing_zyx']),np.asarray(metadata['origin_xyz']),
                                    prepared.image.shape,prepared.spacing,prepared.origin)
-            labels,diagnostics=refine(labels,prepared,model,config,notify,cancel,
-                                       manifest.get('surface_evidence_threshold',.5))
+            if redraw:
+                labels,diagnostics=redraw_proposals(labels,prepared,model,config,notify,cancel,
+                    max(.65,manifest.get('surface_evidence_threshold',.5)))
+            else:
+                labels,diagnostics=refine(labels,prepared,model,config,notify,cancel,
+                    manifest.get('surface_evidence_threshold',.5))
             folder=directory/f'{index+1:04d}-{Path(row["image"]).stem}';folder.mkdir()
             metadata.update(spacing_zyx=prepared.spacing,origin_xyz=prepared.origin,cells=[],
                             refinement=dict(model=str(Path(model_directory).resolve()),config=asdict(config),
                                             checkpoint_sha256=checkpoint_sha256,cells=diagnostics,
-                                            policy='Refine existing instances only; invalid '
-                                            'refinements retain detector contours. No roundness filter.'))
+                                            policy=('Detector boxes and seeds only; unsupported crop contours are rejected; '
+                                                    'no detector-mask fallback. No roundness filter.' if redraw else
+                                                    'Refine existing instances only; invalid refinements retain detector contours. No roundness filter.')))
             metadata.pop('metrics',None)
             for cell,box in enumerate(ndi.find_objects(labels),1):
                 if box is None:continue
@@ -174,11 +198,14 @@ def apply(cells_report, model_directory, output, device='auto',emit=lambda e:Non
             path=folder/'contours.npz'
             np.savez_compressed(path,labels=labels,metadata=np.array(json.dumps(metadata,allow_nan=False)))
             refined_row=dict(row,predictions=str(path),refinement=diagnostics)
+            if redraw:
+                refined_row['cells']=len(metadata['cells'])
             if 'metrics' in refined_row:
                 refined_row['detector_metrics']=refined_row.pop('metrics')
             report['files'].append(refined_row)
             _json(directory/'report.json',report)
-        report['summary']=dict(cells=sum(len(r['refinement']) for r in report['files']),
+        report['summary']=dict(proposals=sum(len(r['refinement']) for r in report['files']),
+                               cells=sum(int(d['accepted']) if redraw else 1 for r in report['files'] for d in r['refinement']),
                                refined=sum(d['accepted'] for r in report['files'] for d in r['refinement']))
         report['status']='complete'
     except Cancelled:

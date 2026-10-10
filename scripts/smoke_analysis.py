@@ -21,6 +21,9 @@ parser.add_argument('--boundary-model', type=Path, help='Exercise the optional s
 parser.add_argument('--cell-model', type=Path, help='Select StarDist or the center-and-box detector')
 parser.add_argument('--signal-model', type=Path, help='Exercise a selected signal checkpoint')
 parser.add_argument('--membrane-snap', action='store_true', help='Exercise local membrane peak refinement')
+parser.add_argument('--learned-boundary', action='store_true', help='Exercise annotation-trained 2D boundary guidance')
+parser.add_argument('--cell-consensus', action='store_true', help='Exercise agreement between both cell pipelines')
+parser.add_argument('--stardist-proposals', action='store_true', help='Exercise strict StarDist proposal redrawing')
 parser.add_argument('--cell-recovery', action='store_true', help='Exercise local membrane, retry and signal-guided cell recovery')
 args = parser.parse_args()
 if args.package_root:
@@ -74,8 +77,11 @@ def exercise():
         window.output.setText(str((output / 'runs').resolve()))
         window.device.setCurrentText(args.device)
         window.membrane_snap.setChecked(args.membrane_snap)
+        window.learned_boundary.setChecked(args.learned_boundary)
         window.cell_recovery.setChecked(args.cell_recovery)
-        if args.membrane_snap:
+        window.stardist_proposals.setChecked(args.stardist_proposals or args.cell_consensus)
+        window.consensus_cells.setChecked(args.cell_consensus)
+        if args.membrane_snap or args.learned_boundary:
             window.options_button.setChecked(True)
         if args.boundary_model:
             window.boundary_model.setText(str(args.boundary_model.resolve()))
@@ -94,12 +100,20 @@ def exercise():
         wait(lambda: not window.running and not window.loading)
         assert window.result_path
         report = window.result_report
+        if args.cell_consensus:
+            stages=json.loads(window.result_path.read_text())['stages']
+            assert 'consensus_cells' in stages and 'consensus' in stages
+            assert report['cell_consensus']['matches']
         if args.cell_recovery:
             stages=json.loads(window.result_path.read_text())['stages']
             assert 'guide_signals' in stages and 'recover' in stages
             assert report['cell_recovery']['signal_guided_summary']
         if args.membrane_snap:
             assert report['membrane_snap']['cells'], 'Missing membrane peak diagnostics'
+            assert 'snap' in json.loads(window.result_path.read_text())['stages']
+        if args.learned_boundary:
+            assert report['membrane_snap']['boundary_model']
+            assert report['membrane_snap']['boundary_checkpoint_sha256']
             assert 'snap' in json.loads(window.result_path.read_text())['stages']
         if window.boundary_model.text():
             assert report['boundary_refinement']['cells'], 'Missing boundary diagnostics'

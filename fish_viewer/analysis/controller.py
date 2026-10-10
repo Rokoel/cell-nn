@@ -29,6 +29,15 @@ def default_models():
     return cells, signals
 
 
+def sensitive_stardist_model():
+    root = Path(__file__).resolve().parents[2]
+    for path in (root / 'models/cells-sensitive',
+                 root / 'artifacts/full-fish/training/neural-train-20260915-033619-354714/model'):
+        if (path / 'fish-model.json').is_file():
+            return str(path)
+    return ''
+
+
 def default_refinement_model():
     root = Path(__file__).resolve().parents[2] / 'models'
     for name in ('refinement-bias-candidate', 'refinement'):
@@ -86,7 +95,7 @@ class AnalysisController(QtCore.QObject):
         self.stopping = False
         self.closing = False
 
-    def start(self, image, output, cells, signals, device='auto', refinement=None, membrane_snap=None, recovery=None):
+    def start(self, image, output, cells, signals, device='auto', refinement=None, membrane_snap=None, recovery=None, stardist_proposals=False, consensus_model=None, boundary_guidance=None):
         if self.busy:
             raise ValueError('A scan is already being processed.')
         manifest = check_models(cells, signals)
@@ -94,6 +103,15 @@ class AnalysisController(QtCore.QObject):
         self.center_box_detector = manifest.get('engine') == 'cell-center-box3d'
         if self.center_box_detector and not self.refinement_model:
             raise ValueError('The center-and-box detector requires a Boundaries model to draw crop contours.')
+        self.stardist_proposals = bool(stardist_proposals)
+        if self.stardist_proposals and (self.center_box_detector or not self.refinement_model):
+            raise ValueError('StarDist proposals require a StarDist Cells model and a Boundaries model.')
+        self.consensus_model = str(Path(consensus_model).resolve()) if consensus_model else None
+        if self.consensus_model:
+            if not self.stardist_proposals:
+                raise ValueError('Consensus requires StarDist proposal redrawing and a center/box model.')
+            from ..proposals.config import read_model as read_proposal_model
+            read_proposal_model(self.consensus_model)
         self.recovery_config = None
         if recovery is not None:
             from ..proposals.recovery import RecoveryConfig
@@ -109,6 +127,12 @@ class AnalysisController(QtCore.QObject):
             self.stages[1:1] = [('guide_signals', 'Searching uncertain cells for confident signals'),
                                ('recover', 'Recovering signal-supported contours')]
         self.membrane_snap = None
+        self.boundary_guidance = str(Path(boundary_guidance).resolve()) if boundary_guidance else None
+        if self.boundary_guidance:
+            from ..boundary.model import read_model as read_boundary_model
+            read_boundary_model(self.boundary_guidance)
+            if membrane_snap is None:
+                membrane_snap = {}
         if membrane_snap is not None:
             from ..refinement.membrane import MembraneConfig
             self.membrane_snap = asdict(MembraneConfig(**membrane_snap).validate())
@@ -116,9 +140,13 @@ class AnalysisController(QtCore.QObject):
             from ..refinement.config import read_model as read_refinement_model
             read_refinement_model(self.refinement_model)
             if not self.center_box_detector:
-                self.stages.insert(1, ('refine', 'Refining cell boundaries'))
+                self.stages.insert(1, ('refine', 'Redrawing and checking StarDist proposals' if self.stardist_proposals else 'Refining cell boundaries'))
             else:
                 self.stages[0] = ('cells', 'Finding cell centers and drawing crop contours')
+        if self.consensus_model:
+            at=next(i for i,s in enumerate(self.stages) if s[0]=='signals')
+            self.stages[at:at]=[('consensus_cells','Finding cells with the center/box model'),
+                                ('consensus','Keeping cells detected by both approaches')]
         if self.membrane_snap:
             self.stages.insert(next(i for i, s in enumerate(self.stages) if s[0] == 'signals'),
                                ('snap', 'Snapping contours to membrane peaks'))
@@ -139,7 +167,10 @@ class AnalysisController(QtCore.QObject):
         self.state['refinement_model'] = self.refinement_model
         self.state['cell_detector_engine'] = manifest.get('engine', 'stardist3d')
         self.state['membrane_snap'] = self.membrane_snap
+        self.state['boundary_guidance'] = self.boundary_guidance
         self.state['cell_recovery'] = self.recovery_config
+        self.state['stardist_proposals'] = self.stardist_proposals
+        self.state['consensus_model'] = self.consensus_model
         self._persist()
         if self.center_box_detector:
             self.busy = True
@@ -154,7 +185,8 @@ class AnalysisController(QtCore.QObject):
                 arguments += ['--recovery-config', str(self.recovery_path)]
             self._launch(0, arguments)
             return
-        config = replace(evidence_preset(NeuralConfig.from_dict(manifest['config'])), device=device)
+        saved_config = NeuralConfig.from_dict(manifest['config'])
+        config = replace(saved_config if self.stardist_proposals else evidence_preset(saved_config), device=device)
         request = dict(config=asdict(config), mode='apply', model=str(Path(cells).resolve()),
                        output=str(self.directory / 'work'), cancel_file=str(self.cancel_file),
                        entries=[dict(image=str(self.image), scene=None)])
@@ -251,17 +283,34 @@ class AnalysisController(QtCore.QObject):
                      str(Path(report['directory'])/'report.json'),'--output',str(self.directory/'work'),
                      '--device',self.device,'--cancel-file',str(self.cancel_file)])
                 return
-            if self.stage in ('cells', 'refine', 'snap', 'recover'):
+            if self.stage in ('cells', 'refine', 'snap', 'recover', 'consensus_cells', 'consensus'):
                 if len(report.get('files', [])) != 1 or report.get('failures'):
                     raise ValueError('Cell detection did not produce a complete scan result.')
                 if self.stage == 'cells' and self.refinement_model and not self.center_box_detector:
                     self._launch(1, ['-m', 'fish_viewer.refinement', '--mode', 'apply',
                         '--cells-report', str(Path(report['directory']) / 'report.json'),
                         '--model', self.refinement_model, '--output', str(self.directory / 'work'),
-                        '--device', self.device, '--cancel-file', str(self.cancel_file)])
+                        '--device', self.device, '--cancel-file', str(self.cancel_file)]
+                        + (['--redraw-proposals'] if self.stardist_proposals else []))
                     return
                 if self.stage == 'refine':
                     self.state['refinement_summary'] = report['summary']
+                if self.stage == 'refine' and self.consensus_model:
+                    self._launch(next(i for i,s in enumerate(self.stages) if s[0]=='consensus_cells'),
+                        ['-m','fish_viewer.proposals','--mode','apply','--image',str(self.image),
+                         '--model',self.consensus_model,'--boundary-model',self.refinement_model,
+                         '--output',str(self.directory/'work'),'--device',self.device,
+                         '--cancel-file',str(self.cancel_file)])
+                    return
+                if self.stage == 'consensus_cells':
+                    self._launch(next(i for i,s in enumerate(self.stages) if s[0]=='consensus'),
+                        ['-m','fish_viewer.proposals.consensus','--primary-report',
+                         str(Path(self.state['stages']['refine'])/'report.json'),'--secondary-report',
+                         str(Path(report['directory'])/'report.json'),'--output',str(self.directory/'work'),
+                         '--cancel-file',str(self.cancel_file)])
+                    return
+                if self.stage == 'consensus':
+                    self.state['consensus_summary']=report['summary']
                 if self.stage == 'cells' and self.recovery_config and self.recovery_config['signal_guided']:
                     self._launch(next(i for i,s in enumerate(self.stages) if s[0]=='guide_signals'),
                         ['-m','fish_viewer.signals','--mode','apply','--image',str(self.image),
@@ -279,7 +328,9 @@ class AnalysisController(QtCore.QObject):
                          '--cells-report', str(Path(report['directory']) / 'report.json'),
                          '--output', str(self.directory / 'work'),
                          '--config-file', str(snap_config),
-                         '--cancel-file', str(self.cancel_file)])
+                         '--cancel-file', str(self.cancel_file)]
+                        + (['--boundary-model', self.boundary_guidance, '--device', self.device]
+                           if self.boundary_guidance else []))
                     return
                 if self.stage == 'snap':
                     self.state['membrane_snap_summary'] = report['summary']
