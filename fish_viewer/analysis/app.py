@@ -8,7 +8,7 @@ import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..app import ChannelPanel, Job, STYLE
-from ..models import LibraryEntry, Scene
+from ..models import LibraryEntry
 from ..reader import entry_for_path, load_dataset, scan_library
 from ..signals.overlays import read_signals
 from ..views import SliceView, VolumeView
@@ -34,6 +34,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.controller.completed.connect(self.completed)
         self.controller.failed.connect(self.failed)
         self.controller.cancelled.connect(self.cancelled)
+        self.documents = {}
         self.dataset = None
         self.result_path = None
         self.result_report = None
@@ -128,20 +129,20 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.pipeline.setMinimumWidth(0)
         self.pipeline.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,QtWidgets.QSizePolicy.Policy.Fixed)
         for label, key in (
-            ('Fine-tuned StarDist 2D (default)', 'stardist2d'),
+            ('Fine-tuned StarDist 2D', 'stardist2d'),
             ('Conservative StarDist', 'conservative'),
             ('Balanced StarDist (first release cells)', 'balanced'),
             ('Preprocessed StarDist (experimental)', 'preprocessed'),
             ('Center/box + surface-loss contours', 'crop'),
             ('Sensitive StarDist + surface-loss contours', 'hybrid'),
-            ('Both-detector consensus', 'consensus'),
+            ('Both-detector consensus (default)', 'consensus'),
             ('Signals first + center/box + contours (experimental)', 'signal-first'),
         ):
             self.pipeline.addItem(label, key)
         self.pipeline.setToolTip('Each pipeline uses its current bundled models and the signal-center U-Net. No training is performed.')
         form.addRow('Pipeline', self.pipeline)
         self.pipeline.currentIndexChanged.connect(self.select_pipeline)
-        selected = self.pipeline.findData(self.settings.value('pipeline', 'stardist2d'))
+        selected = self.pipeline.findData(self.settings.value('pipeline', 'consensus'))
         self.pipeline.setCurrentIndex(max(0, selected))
         self.select_pipeline()
         self.roundness = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
@@ -162,6 +163,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.options_button.toggled.connect(lambda visible: (
             self.options.setVisible(visible), self.options_button.setArrowType(
                 QtCore.Qt.ArrowType.DownArrow if visible else QtCore.Qt.ArrowType.RightArrow)))
+        self.roles_button = self._button('Cell / signal channels…', self.show_channels, left)
         row = QtWidgets.QHBoxLayout()
         self.run_button = self._button('Analyze selected', self.start, row)
         self.run_button.setStyleSheet('background:#205e58;font-weight:bold;padding:10px;')
@@ -256,7 +258,11 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         splitter.addWidget(right)
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([340, 840])
-        self.statusBar().showMessage('Original scans are read-only.')
+        from .editor import AnnotationEditor
+        self.editor = AnnotationEditor(self)
+        left.insertWidget(left.count()-1, QtWidgets.QLabel('Annotations and editing'))
+        left.insertWidget(left.count()-1, self.editor)
+        self.statusBar().showMessage('Original scans are read-only; export saves edited copies.')
 
     @staticmethod
     def _table(columns):
@@ -277,9 +283,10 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.run_button.setEnabled(not self.running and not self.loading and self.scans.count() > 0)
         self.cancel_button.setEnabled(self.running)
         self.results_button.setEnabled(self.result_path is not None)
-        self.excel_button.setEnabled(self.result_report is not None and not self.loading)
-        for widget in (self.channels_button, self.fit_button, self.mode, self.axis, self.slice):
-            widget.setEnabled(self.dataset is not None)
+        self.excel_button.setEnabled(self.dataset is not None and not self.loading and not self.running)
+        self.editor.setEnabled(self.dataset is not None and not self.loading and not self.running)
+        for widget in (self.roles_button, self.channels_button, self.fit_button, self.mode, self.axis, self.slice):
+            widget.setEnabled(self.dataset is not None and not self.running and not self.loading)
 
     def choose_folder(self, field):
         path = QtWidgets.QFileDialog.getExistingDirectory(self, 'Choose folder', field.text())
@@ -312,16 +319,19 @@ class AnalysisWindow(QtWidgets.QMainWindow):
             entries = []
             for path in paths:
                 entries.extend(scan_library(path)[0] if Path(path).is_dir() else [entry_for_path(path)])
-            return sorted({str(e.image.resolve()) for e in entries})
+            return sorted({(str(e.image.resolve()),str(e.scene.resolve()) if e.scene else None) for e in entries}, key=lambda e:e[0])
         def done(paths):
-            known = {self.scans.item(i).data(QtCore.Qt.ItemDataRole.UserRole)['image'] for i in range(self.scans.count())}
+            known = {(r['image'],r.get('scene')) for r in (self.scans.item(i).data(QtCore.Qt.ItemDataRole.UserRole) for i in range(self.scans.count()))}
             first = None
-            for path in paths:
-                if path in known:
+            for path, scene in paths:
+                if (path,scene) in known:
                     continue
-                item = QtWidgets.QListWidgetItem(Path(path).name)
+                known.add((path,scene))
+                label=Path(path).name
+                if scene and Path(scene).stem!=Path(path).stem: label+=' · '+Path(scene).name
+                item = QtWidgets.QListWidgetItem(label)
                 item.setToolTip(path)
-                item.setData(QtCore.Qt.ItemDataRole.UserRole, dict(image=path))
+                item.setData(QtCore.Qt.ItemDataRole.UserRole, dict(image=path, scene=scene))
                 self.scans.addItem(item)
                 if first is None:
                     first = item
@@ -343,10 +353,10 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         if record.get('result'):
             self.load_result(record['result'])
         else:
-            self._load(record['image'])
+            self._load(record.get('scene') or record['image'])
 
     def _load(self, image, result_path=None):
-        self._source_image=str(Path(image).resolve())
+        self._source_image=str(entry_for_path(image).image.resolve())
         if result_path:
             saved=json.loads(Path(result_path).read_text())
             self._source_image=saved.get('source',self._source_image)
@@ -361,14 +371,20 @@ class AnalysisWindow(QtWidgets.QMainWindow):
                 root = Path(result_path).parent
                 dataset = load_dataset(LibraryEntry(root / manifest['image'], root / manifest['scene']))
                 _, report = read_signals(root / manifest['signal_report'])
+                source = Path(manifest.get('source', ''))
+                if source.is_file() and not any(s.source=='manual' for s in dataset.scene.surfaces) and not any(m.source=='manual' for m in dataset.scene.measurements):
+                    source_scene=manifest.get('source_scene')
+                    original = load_dataset(LibraryEntry(source,Path(source_scene)) if source_scene else entry_for_path(source))
+                    dataset.scene.surfaces[:0] = original.scene.surfaces
+                    dataset.scene.measurements[:0] = original.scene.measurements
+                    dataset.scene.contours[:0] = original.scene.contours
                 annotations = (root / manifest['image']).with_suffix('.annotations.json')
                 if annotations.is_file():
                     saved = json.loads(annotations.read_text(encoding='utf-8'))
                     if 'manual_measurements' in saved:
                         report['manual_measurements'] = saved['manual_measurements']
             else:
-                dataset = load_dataset(LibraryEntry(Path(image)))
-                dataset.scene = Scene()  # Raw preview; manual contours never become pipeline output.
+                dataset = load_dataset(entry_for_path(image))
                 report = None
             for channel, volume in zip(dataset.metadata.channels, dataset.volumes):
                 sample = volume.ravel()[::max(1, volume.size // 1_000_000)]
@@ -398,6 +414,11 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         if report and 'cell_volumes' not in report:
             from ..workflow.volumes import add_cell_volumes
             add_cell_volumes(report, dataset.scene.surfaces)
+        if self.editor.document is not None and self.dataset is not None:
+            self.documents[str(self.dataset.metadata.path)] = self.editor.document
+        cached=self.documents.get(str(dataset.metadata.path))
+        if cached is not None:
+            dataset.scene=cached.dataset.scene
         self.dataset, self.result_report = dataset, report
         if self.channel_dialog:
             self.channel_dialog.close()
@@ -437,6 +458,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
             self.summary.setText('Ready for automatic cell contours, signals and A/B measurements.')
         self.distances.blockSignals(False)
         self.refresh_annotations()
+        self.editor.set_dataset(dataset, report, cached)
 
     def start(self):
         if self.running or self.loading:
@@ -524,7 +546,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
                                   consensus_model=default_proposal_model() if self.consensus_cells.isChecked() else None,
                                   roundness=self.roundness.value()/100,
                                   signal_first=self.pipeline.currentData() == 'signal-first',
-                                  cell_channel=roles.get('cell'),signal_channels=roles.get('signals'))
+                                  cell_channel=roles.get('cell'),signal_channels=roles.get('signals'),source_scene=item.data(QtCore.Qt.ItemDataRole.UserRole).get('scene'))
         except Exception as exc:
             self.failed(str(exc))
 
@@ -602,14 +624,14 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self._load(path.parent / report['image'], path)
 
     def export_excel(self):
-        if self.result_report is None:
+        if self.dataset is None:
             return
         default = str(self.result_path.parent / (self.dataset.metadata.path.stem + '.xlsx')) if self.result_path else 'analysis.xlsx'
         path, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Export volumes and distances', default, 'Excel workbook (*.xlsx)')
         if path:
             try:
                 from ..workflow.excel import write_excel
-                write_excel(Path(path).with_suffix('.xlsx'), self.result_report)
+                write_excel(Path(path).with_suffix('.xlsx'), self.editor.document.report())
                 self.phase.setText('Excel workbook saved: ' + str(path))
             except Exception as exc:
                 self.error(str(exc))
@@ -751,8 +773,10 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         if row < 0 or self.dataset is None:
             return
         point = self.distances.item(row, 0).data(QtCore.Qt.ItemDataRole.UserRole)
+        if not point:
+            return
         index = next((i for i, m in enumerate(self.dataset.scene.measurements)
-                      if re.match(rf'Signal {point["signal_id"]}(?:;|\s)', m.name)), None)
+                      if m.name == point.get('annotation_name') or re.match(rf'Signal {re.escape(str(point["signal_id"]))}(?:;|\s)', m.name)), None)
         if index is None:
             return
         self.slice_view.selected = ('measurement', index)
@@ -762,13 +786,14 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         axis = 2-self.slice_view.axis
         self.slice.setValue(int(round((xyz[axis]-self.dataset.center_origin[axis])/self.dataset.spacing[axis])))
         surface = next((s for s in self.dataset.scene.surfaces if s.name.startswith(f'Predicted cell {point["cell_id"]} -')), None)
-        coordinates = surface.vertices if surface is not None else np.asarray([point['xyz'], point['border_xyz']])
+        coordinates = surface.vertices if surface is not None else np.asarray([point['xyz'], point.get('border_xyz', point['xyz'])])
         low, high = coordinates.min(0)-.8, coordinates.max(0)+.8
         u, v = self.slice_view.projection_axes
         self.slice_view.fitInView(QtCore.QRectF(low[u], low[v], high[u]-low[u], high[v]-low[v]), QtCore.Qt.AspectRatioMode.KeepAspectRatio)
         if self.volume_view and self._volume_dataset is self.dataset:
             self.volume_view.plotter.reset_camera(bounds=tuple(v for lo, hi in zip(low, high) for v in (lo, hi)))
-        self.selection_info.setText(f'Signal {point["signal_id"]} · cell {point["cell_id"]} · channel {point["channel"]+1} · A → B: {point["distance_um"]:.4f} µm')
+        distance=point.get('distance_um')
+        self.selection_info.setText(f'{point["signal_id"]} · A → B: {distance:.4f} µm' if distance is not None else str(point['signal_id']))
         self.refresh_annotations()
 
     def error(self, message):

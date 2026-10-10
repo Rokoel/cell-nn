@@ -70,6 +70,10 @@ jobs:
         env:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: python -c "import os,tomllib; v=tomllib.load(open('pyproject.toml','rb'))['project']['version']; assert os.environ['RELEASE_TAG']=='v'+v, 'Tag must equal v plus project version'"
+      - name: Check Windows runtime bootstrap
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./setup-windows-runtime.ps1
       - name: Test readers, geometry, export and Excel
         run: python -m pytest -q -m "not neural and not gui and not integration"
       - name: Verify bundled models on CPU

@@ -72,5 +72,8 @@ display reader could otherwise accept. The packaged wheel includes the template.
 This is an example-derived compatibility profile, not an official vendor schema.
 Imaris itself is not available in this environment, so opening the files in Imaris
 has **not** been verified. Current exports use the FISH 6.3.1 scene format; opening
-them in Imaris 5 is not a supported target. Images with embedded `Scene`/`Scene8`
-annotations are explicitly rejected rather than silently retaining old contours.
+them in Imaris 5 is not a supported target. Embedded `Scene`/`Scene8` XML and recognized HDF5 mesh/spot layouts are read.
+Export removes stale scene groups from a copied image and writes the current
+annotations to the companion `.imx`. Image datasets remain unchanged, although
+the whole-file checksum changes when embedded scenes are removed. Unsupported
+scene objects are reported and block export to avoid silent annotation loss.

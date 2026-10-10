@@ -1,0 +1,325 @@
+"""Regression coverage for live geometry, undo and annotated-image exports."""
+
+from copy import deepcopy
+from pathlib import Path
+import h5py
+import numpy as np
+import pytest
+from test_workflow import signal_result  # noqa: F401 - shared calibrated fixture
+from openpyxl import load_workbook
+from fish_viewer.models import Measurement, Scene, Surface
+from fish_viewer.reader import load_dataset, entry_for_path
+from fish_viewer.analysis.annotations import AnnotationDocument, origin
+from fish_viewer.workflow.edit_export import export_document, editable_scene_xml
+from fish_viewer.workflow.volumes import surface_volume
+
+
+def cell():
+    vertices = np.array(
+        [
+            [11, 21, 30],
+            [17, 21, 30],
+            [17, 25, 30],
+            [11, 25, 30],
+            [11, 21, 34],
+            [17, 21, 34],
+            [17, 25, 34],
+            [11, 25, 34],
+        ],
+        float,
+    )
+    triangles = np.array(
+        [
+            [0, 2, 1],
+            [0, 3, 2],
+            [4, 5, 6],
+            [4, 6, 7],
+            [0, 1, 5],
+            [0, 5, 4],
+            [1, 2, 6],
+            [1, 6, 5],
+            [2, 3, 7],
+            [2, 7, 6],
+            [3, 0, 4],
+            [3, 4, 7],
+        ]
+    )
+    return Surface("manual cell", vertices, triangles)
+
+
+def document(ims_file):
+    dataset = load_dataset(entry_for_path(ims_file))
+    dataset.scene = Scene(
+        surfaces=[cell()],
+        measurements=[
+            Measurement(
+                "green signal; channel 1",
+                np.array([[14, 23, 31], [14, 23, 30]], float),
+                ["A", "B"],
+                [0, 0],
+                [(0, 1)],
+            )
+        ],
+    )
+    return AnnotationDocument(dataset)
+
+
+def test_move_signal_contour_delete_and_undo_recalculate(qapp, ims_file):
+    doc = document(ims_file)
+    assert doc.volumes == [pytest.approx(96)] and doc.distances[0] == pytest.approx(1)
+    doc.move("measurement", 0, 0, [14, 23, 31.5])
+    assert doc.distances[0] == pytest.approx(1.5)
+    assert origin(doc.dataset.scene.measurements[0]) == "Program"
+    doc.move("surface", 0, 0, [11, 21, 29])
+    assert doc.volumes[0] > 96
+    assert doc.distances[0] > 1.5
+    doc.undo.undo()
+    assert doc.volumes[0] == pytest.approx(96)
+    doc.undo.undo()
+    assert doc.distances[0] == pytest.approx(1)
+    assert origin(doc.dataset.scene.measurements[0]) == "Manual"
+    doc.delete("surface", 0)
+    assert not doc.dataset.scene.surfaces
+    assert doc.dataset.scene.measurements[0].labels == ["A"]
+    assert doc.distances == {}
+    doc.undo.undo()
+    assert doc.dataset.scene.surfaces and doc.distances[0] == pytest.approx(1)
+    doc.delete("measurement", 0)
+    assert not doc.dataset.scene.measurements
+    doc.undo.undo()
+    assert doc.dataset.scene.measurements
+
+
+def test_add_remove_mesh_point_preserves_closed_volume(qapp, ims_file):
+    doc = document(ims_file)
+    v = deepcopy(doc.dataset.scene.surfaces[0].vertices)
+    doc.add_vertex("surface", 0, [14, 23, 30])
+    assert len(doc.dataset.scene.surfaces[0].vertices) == 9
+    assert doc.volumes[0] == pytest.approx(96)
+    doc.delete_vertex("surface", 0, 8)
+    assert len(doc.dataset.scene.surfaces[0].vertices) == 8
+    assert doc.volumes[0] == pytest.approx(96)
+    doc.undo.undo()
+    assert len(doc.dataset.scene.surfaces[0].vertices) == 9
+    doc.undo.undo()
+    np.testing.assert_array_equal(doc.dataset.scene.surfaces[0].vertices, v)
+
+
+def test_added_signal_outside_cell_has_no_fabricated_distance(qapp, ims_file):
+    doc = document(ims_file)
+    doc.add_signal([14, 23, 32], 1)
+    assert doc.bindings[1] == 0 and doc.distances[1] == pytest.approx(2)
+    doc.move("measurement", 1, 0, [100, 100, 100])
+    assert doc.bindings[1] is None and 1 not in doc.distances
+    assert doc.dataset.scene.measurements[1].labels == ["A"]
+    doc.undo.undo()
+    assert doc.distances[1] == pytest.approx(2)
+
+
+@pytest.mark.parametrize("embedded", [False, True])
+def test_export_latest_edited_geometry_and_provenance(
+    qapp, ims_file, tmp_path, embedded
+):
+    doc = document(ims_file)
+    if embedded:
+        data = editable_scene_xml(
+            ims_file.name, doc.dataset.scene, doc.dataset.metadata
+        )
+        with h5py.File(ims_file, "r+") as f:
+            f.create_dataset("Scene/Data", data=np.frombuffer(data, dtype=np.uint8))
+        loaded = load_dataset(entry_for_path(ims_file))
+        assert len(loaded.scene.surfaces) == len(loaded.scene.measurements) == 1
+        assert loaded.scene.surfaces[0].source == "manual"
+    source = ims_file.read_bytes()
+    doc.add_signal([14, 23, 32], 1)
+    doc.move("surface", 0, 0, [11, 21, 29])
+    doc.delete("measurement", 0)
+    path = Path(export_document(doc, tmp_path / "edited.ims"))
+    reopened = load_dataset(entry_for_path(path))
+    assert len(reopened.scene.surfaces) == len(reopened.scene.measurements) == 1
+    np.testing.assert_allclose(
+        reopened.scene.surfaces[0].vertices, doc.dataset.scene.surfaces[0].vertices
+    )
+    assert reopened.scene.surfaces[0].source == "program"
+    assert reopened.scene.measurements[0].source == "program"
+    assert ims_file.read_bytes() == source
+    with h5py.File(path) as out, h5py.File(ims_file) as original:
+        assert not any(k.startswith("Scene") for k in out)
+        np.testing.assert_array_equal(
+            out["DataSet/ResolutionLevel 0/TimePoint 0/Channel 0/Data"],
+            original["DataSet/ResolutionLevel 0/TimePoint 0/Channel 0/Data"],
+        )
+    workbook = load_workbook(path.with_suffix(".xlsx"))
+    assert workbook.sheetnames == ["Measurements"]
+    rows = list(workbook.active.values)
+    assert (
+        len(rows) == 2
+        and rows[1][2] == pytest.approx(doc.volumes[0])
+        and rows[1][-1] == pytest.approx(doc.distances[0])
+    )
+    workbook.close()
+
+
+def test_manual_import_keeps_original_b_until_edited(qapp, ims_file):
+    doc = document(ims_file)
+    doc.dataset.scene.measurements[0].points[1] = [13.8, 23, 30]
+    doc = AnnotationDocument(doc.dataset)
+    assert doc.distances[0] == pytest.approx(np.sqrt(1.04))
+    doc.move("measurement", 0, 0, [14, 23, 31])
+    assert doc.distances[0] == pytest.approx(1)
+
+
+def test_hdf_binary_spots_meshes_and_vlen_scene_xml(ims_file):
+    surface = cell()
+    with h5py.File(ims_file, "r+") as f:
+        g = f.create_group("Scene8/Content/Surfaces0")
+        g.attrs["Name"] = "embedded cell"
+        g.create_dataset("Vertices", data=surface.vertices)
+        g.create_dataset("Triangles", data=surface.triangles)
+        g = f.create_group("Scene8/Content/Points0")
+        g.attrs["Name"] = "embedded signals"
+        g.create_dataset("CoordsXYZR", data=[[14, 23, 31, 0.1], [14, 23, 32, 0.1]])
+        g.create_dataset("Time", data=[[0], [0]])
+        xml = f.create_dataset(
+            "Scene8/Data", (1,), dtype=h5py.vlen_dtype(np.dtype("uint8"))
+        )
+        xml[0] = np.frombuffer(
+            b"<bpImarisApplication></bpImarisApplication>", dtype=np.uint8
+        )
+    dataset = load_dataset(entry_for_path(ims_file))
+    assert len(dataset.scene.surfaces) == 1 and len(dataset.scene.measurements) == 2
+    assert surface_volume(dataset.scene.surfaces[0]) == pytest.approx(96)
+    assert not dataset.scene.warnings
+
+
+@pytest.mark.gui
+def test_editor_ui_manual_import_selection_edit_undo_and_hide(qapp, ims_file, tmp_path):
+    from PySide6 import QtCore
+    from fish_viewer.analysis.app import AnalysisWindow
+
+    doc = document(ims_file)
+    window = AnalysisWindow(
+        off_screen=True,
+        settings=QtCore.QSettings(
+            str(tmp_path / "settings.ini"), QtCore.QSettings.Format.IniFormat
+        ),
+    )
+    try:
+        window.set_dataset(doc.dataset, None)
+        assert window.pipeline.currentData() == "consensus"
+        assert window.consensus_cells.isChecked()
+        editor = window.editor
+        assert editor.tree.topLevelItem(0).childCount() == 2
+        item = editor.tree.topLevelItem(0).child(0)
+        editor.tree.setCurrentItem(item)
+        editor.move_point(0, [11, 21, 29])
+        assert editor.document.volumes[0] > 96
+        editor.document.undo.undo()
+        assert editor.document.volumes[0] == pytest.approx(96)
+        editor.manual.setChecked(False)
+        assert not window.dataset.scene.surfaces[0].visible
+        editor.delete()
+        assert not window.dataset.scene.surfaces
+        editor.document.undo.undo()
+        assert window.dataset.scene.surfaces
+        editor.edit.setChecked(True)
+        window.change_slice(0)
+        qapp.processEvents()
+    finally:
+        window.close()
+
+
+def test_slice_border_point_move_is_closed_and_undoable(qapp, ims_file):
+    doc = document(ims_file)
+    # The point lies on an edge shared by two triangles: both must be split.
+    doc.move_section(0, [14, 21, 30], [14, 20.8, 30])
+    assert doc.volumes[0] is not None
+    assert len(doc.dataset.scene.surfaces[0].vertices) == 9
+    doc.undo.undo()
+    assert doc.volumes[0] == pytest.approx(96)
+    assert len(doc.dataset.scene.surfaces[0].vertices) == 8
+
+
+def test_multiple_spot_centers_are_individually_deletable(qapp, ims_file):
+    doc = document(ims_file)
+    doc.dataset.scene.measurements = [
+        Measurement(
+            "Spots", np.array([[14, 23, 31], [14, 23, 32]], float), ["A", "A"], [0, 0]
+        )
+    ]
+    doc = AnnotationDocument(doc.dataset)
+    assert len(doc.dataset.scene.measurements) == 2
+    doc.delete("measurement", 0)
+    assert len(doc.dataset.scene.measurements) == 1
+    assert doc.dataset.scene.measurements[0].points[0, 2] == 32
+    doc.undo.undo()
+    assert len(doc.dataset.scene.measurements) == 2
+
+
+@pytest.mark.gui
+def test_edits_and_undo_survive_switching_scans(qapp, ims_file, tmp_path):
+    from PySide6 import QtCore
+    from fish_viewer.analysis.app import AnalysisWindow
+
+    doc = document(ims_file)
+    window = AnalysisWindow(
+        off_screen=True,
+        settings=QtCore.QSettings(
+            str(tmp_path / "settings.ini"), QtCore.QSettings.Format.IniFormat
+        ),
+    )
+    try:
+        window.set_dataset(doc.dataset, None)
+        window.editor.document.delete("surface", 0)
+        other = deepcopy(doc.dataset)
+        other.metadata.path = tmp_path / "other.ims"
+        window.set_dataset(other, None)
+        window.set_dataset(load_dataset(entry_for_path(ims_file)), None)
+        assert not window.dataset.scene.surfaces
+        window.editor.document.undo.undo()
+        assert len(window.dataset.scene.surfaces) == 1
+    finally:
+        window.close()
+
+
+def test_pipeline_export_preserves_embedded_manual_and_new_detections(
+    qapp, signal_result, tmp_path  # noqa: F811 - imported pytest fixture
+):
+    from fish_viewer.workflow.results import filter_result
+    from fish_viewer.workflow.distances import measure_result
+    from fish_viewer.workflow.export import export_result
+
+    filtered = filter_result(signal_result, tmp_path / "work")
+    measured = measure_result(
+        Path(filtered["directory"]) / "report.json", tmp_path / "work"
+    )
+    image = Path(measured["image"])
+    original = load_dataset(entry_for_path(image))
+    manual = Scene(
+        surfaces=[cell()],
+        measurements=[
+            Measurement(
+                "original A-B",
+                np.array([[14, 23, 31], [14, 23, 30]], float),
+                ["A", "B"],
+                [0, 0],
+                [(0, 1)],
+            )
+        ],
+    )
+    with h5py.File(image, "r+") as file:
+        file.create_dataset(
+            "Scene/Data",
+            data=np.frombuffer(
+                editable_scene_xml(image.name, manual, original.metadata),
+                dtype=np.uint8,
+            ),
+        )
+    target = tmp_path / "combined.ims"
+    export_result(Path(measured["directory"]) / "report.json", target)
+    reopened = load_dataset(entry_for_path(target))
+    assert sum(s.source == "manual" for s in reopened.scene.surfaces) == 1
+    assert sum(s.source != "manual" for s in reopened.scene.surfaces) == 2
+    assert sum(m.source == "manual" for m in reopened.scene.measurements) == 1
+    assert sum(m.source != "manual" for m in reopened.scene.measurements) == 2
+    assert not reopened.scene.warnings

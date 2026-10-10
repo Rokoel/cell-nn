@@ -34,13 +34,13 @@ Only the current cell/contour models for each preset are exposed:
 
 | Preset | Cell detection and contours |
 | --- | --- |
-| Fine-tuned StarDist 2D (default) | `models/cells-stardist2d`, enhanced XY contours linked into 3D cells |
+| Fine-tuned StarDist 2D | `models/cells-stardist2d`, enhanced XY contours linked into 3D cells |
 | Conservative StarDist | `models/cells-conservative`, its own surfaces |
 | Preprocessed StarDist (experimental) | `models/cells-preprocessed`, saved membrane enhancement + its own surfaces |
 | Balanced StarDist (first release cells) | `models/cells`, its own surfaces |
 | Center/box + surface-loss contours | `models/proposals` → `models/refinement-bias-candidate` |
 | Sensitive StarDist + surface-loss contours | `models/cells-sensitive` → `models/refinement-bias-candidate` |
-| Both-detector consensus | Whole hybrid contours with a center/box match at IoU ≥0.5 |
+| Both-detector consensus (default) | Whole hybrid contours with a center/box match at IoU ≥0.5 |
 | Signals first + center/box + contours (experimental) | Full-scan signal proposals → signal-supported center/box candidates → `models/refinement-bias-candidate` |
 
 No preset enables membrane snapping, annotation-boundary guidance or recovery.
@@ -85,11 +85,10 @@ is required. Volumes come from closed 3D meshes. B is the closest mesh point to
 A in physical coordinates, equivalent to first contact of an expanding sphere;
 A–B lines and distances are saved.
 
-Excel has exactly two sheets: **Cell volumes** and **Signal distances**, with
-manual and predicted measurements and separate signal channels where present.
-Manual annotations are used for exported comparisons, never to guide inference.
-The input Imaris scan is read-only; compatible image/scene data are copied into
-a new output file. Native Imaris opening must still be checked in Imaris.
+Excel has one **Measurements** sheet. Each signal row contains its cell volume,
+signal channel and distance; cells without signals still have a volume row.
+Manual and Program rows remain separate. Cells with several signals repeat the
+cell volume on each signal row: do not sum these repeated volumes.
 
 The first published release, v0.2.2 (and the earlier v0.2.0/v0.2.1 tags), bundled
 the balanced StarDist checkpoint now stored in `models/cells` and the original
@@ -102,4 +101,52 @@ Channel selection and the additional trained checkpoint are described in
 
 ## StarDist citation
 
-The default is fine-tuned from the official `2D_versatile_fluo` single-channel fluorescence model. Cite Schmidt, Weigert, Broaddus and Myers, **Cell Detection with Star-convex Polygons**, MICCAI 2018, [DOI](https://doi.org/10.1007/978-3-030-00934-2_30), [paper](https://arxiv.org/abs/1806.03535). The pretrained weights’ BSD-3-Clause license is included in the model directory. See [the contour benchmark](../reports/stardist2d/README.md) and the release notes for distance measurements.
+The optional Fine-tuned StarDist 2D preset is fine-tuned from the official `2D_versatile_fluo` single-channel fluorescence model. Cite Schmidt, Weigert, Broaddus and Myers, **Cell Detection with Star-convex Polygons**, MICCAI 2018, [DOI](https://doi.org/10.1007/978-3-030-00934-2_30), [paper](https://arxiv.org/abs/1806.03535). The pretrained weights’ BSD-3-Clause license is included in the model directory. See [the contour benchmark](../reports/stardist2d/README.md) and the release notes for distance measurements.
+
+
+## Imported annotations and editing
+
+Open `.ims` files with or without embedded annotations, or an `.imx` scene with
+its referenced image beside it. Imported surfaces, drawn section contours,
+signal centers and A–B lines appear alongside new detections. The annotation
+list groups objects as **Manual** and **Program**; each group has a visibility
+checkbox. Objects edited in this app become Program annotations. Hiding a group
+does not delete it or exclude it from export.
+
+Select an object in the annotation list or click its border/marker in 2D.
+**Delete selected** or **Delete** removes the object. **Ctrl+Z** restores it.
+For point editing, enable **Edit points**, drag a white dot, or choose a point
+and apply calibrated XYZ coordinates. Choose **Add contour point** or **Add
+signal** and click in the current 2D slice. **Delete point** removes the selected
+mesh/contour point; for a signal it removes that signal. B points are calculated
+from the signal center and its assigned surface and are not independently moved.
+
+Dragging a slice border inserts a mesh point if needed and moves it as one
+undoable edit. Adding/removing a surface point maintains the connected triangle
+mesh; an unsafe deletion is rejected. Cell volumes and affected signal distances
+update immediately. Original manual A–B measurements remain unchanged until the
+corresponding signal or cell is edited. Signals with no assigned cell retain
+their centers but have no fabricated border distance. Deleting a cell keeps its
+signal centers and removes their stale B points and lines.
+
+**Export edited Imaris…** saves the latest geometry in a new `.ims`/`.imx` pair,
+plus the single-sheet Excel workbook and annotation report. Open the **`.imx`**
+in Imaris to load both the image and annotations. Originals are never overwritten;
+embedded stale scenes are removed from the exported image, while all image
+channels, time points and pyramid data are preserved. Unsupported annotation
+schemas are reported and prevent export rather than silently losing objects.
+Edits and undo histories survive switching scans in the same app session;
+export them before closing the app.
+
+3D surfaces use display smoothing and smooth normals. Measurements and exported
+geometry use the actual edited mesh, so display smoothing does not change volumes
+or distances. The **Cell / signal channels…** button is next to the analysis
+controls; it opens the existing role and display settings.
+
+On Windows, run `setup-analysis.bat` when installing or updating this release.
+It automatically downloads the official Microsoft Visual C++ x64 runtime,
+checks its Microsoft signature, and installs it before setting up TensorFlow.
+Internet access and Windows administrator approval for the Microsoft installer
+may be required. If setup reports a required restart, restart before analysis.
+The release includes this setup integration; it does not redistribute Microsoft's
+installer binary. See [Microsoft's runtime documentation](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170).

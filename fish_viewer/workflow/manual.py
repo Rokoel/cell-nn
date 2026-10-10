@@ -1,4 +1,4 @@
-"""Original manual volumes and A-B distances for the two-sheet Excel export."""
+"""Original manual volumes and A-B distances for the combined Excel measurement export."""
 from pathlib import Path
 
 import numpy as np

@@ -28,7 +28,7 @@ def main():
     for name in ('pyproject.toml', 'run_analysis.py', 'run-analysis.sh', 'run-analysis.bat',
                  'run_annotator.py', 'run-annotator.sh', 'run-annotator.bat',
                  'run_viewer.py', 'run-viewer.sh', 'run-viewer.bat',
-                 'setup-analysis.sh', 'setup-analysis.bat', 'setup-spots.sh', 'setup-spots.bat', 'requirements-spots.txt'):
+                 'setup-analysis.sh', 'setup-analysis.bat', 'setup-windows-runtime.ps1', 'setup-spots.sh', 'setup-spots.bat', 'requirements-spots.txt'):
         shutil.copy2(ROOT / name, destination / name)
     guide=(ROOT / 'docs/fish-analysis.md').read_text(encoding='utf-8')
     # This guide normally lives under docs/; make its links work from the ZIP root.

@@ -65,6 +65,10 @@ class Contour:
     color: tuple[float, float, float] = (1.0, 0.7, 0.3)
     visible: bool = True
 
+    source: str = 'manual'
+
+    native_xml: bytes | None = None
+
     def vertices(self, metadata) -> np.ndarray:
         result = np.empty((len(self.points), 3), dtype=np.float64)
         remaining = [i for i in range(3) if i != self.axis]

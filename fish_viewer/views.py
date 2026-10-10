@@ -39,6 +39,7 @@ def clip_segment(a, b, axis, center, half_width):
 
 class SliceView(QtWidgets.QGraphicsView):
     stepped = QtCore.Signal(int)
+    overlays_updated = QtCore.Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -127,7 +128,9 @@ class SliceView(QtWidgets.QGraphicsView):
                 pen = QtGui.QPen(color)
                 pen.setWidthF(2.5 if self.selected == ('surface', i) else 1.4)
                 pen.setCosmetic(True)
-                self._overlays.append(self.scene().addPath(path, pen))
+                item = self.scene().addPath(path, pen)
+                item.setData(0, ('surface', i))
+                self._overlays.append(item)
             for i, contour in enumerate(self.dataset.scene.contours):
                 if not contour.visible or self.dataset.time != 0:
                     continue
@@ -143,7 +146,9 @@ class SliceView(QtWidgets.QGraphicsView):
                 pen.setWidthF(2)
                 pen.setCosmetic(True)
                 pen.setStyle(QtCore.Qt.PenStyle.DashLine)
-                self._overlays.append(self.scene().addPath(path, pen))
+                item = self.scene().addPath(path, pen)
+                item.setData(0, ('contour', i))
+                self._overlays.append(item)
         for i, measure in enumerate(self.dataset.scene.measurements):
             if not measure.visible:
                 continue
@@ -168,6 +173,7 @@ class SliceView(QtWidgets.QGraphicsView):
                     marker.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
                     marker.setPen(pen)
                     marker.setPos(float(point[u]), float(point[v]))
+                    marker.setData(0, ('measurement', i))
                     self.scene().addItem(marker)
                     self._overlays.append(marker)
                     if self.selected == ('measurement', i):
@@ -178,6 +184,7 @@ class SliceView(QtWidgets.QGraphicsView):
                         self.scene().addItem(label)
                         self._overlays.append(label)
         self.viewport().update()
+        self.overlays_updated.emit()
 
     def fit(self):
         if not self._rect.isEmpty():
@@ -245,7 +252,8 @@ class VolumeView(QtWidgets.QWidget):
         self._grid = None
         self.update_volume()
         for surface in dataset.scene.surfaces:
-            actor = self.plotter.add_mesh(mesh_for(surface), color=surface.color,
+            display_mesh = mesh_for(surface).clean().smooth_taubin(n_iter=15, pass_band=.12)
+            actor = self.plotter.add_mesh(display_mesh, color=surface.color,
                 opacity=self.surface_opacity, smooth_shading=True, render=False,
                 show_scalar_bar=False, pickable=True)
             self._mesh_actors.append(actor)

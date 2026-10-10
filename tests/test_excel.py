@@ -35,15 +35,13 @@ def test_two_lists_keep_manual_nn_values_channels_and_safe_text(tmp_path):
             points=[dict(signal_id='A1',cell_id='Manual cell',channel=None,channel_name=None,distance_um=.8)]))
     path = write_excel(tmp_path/'report.xlsx', report)
     workbook = load_workbook(path)
-    assert workbook.sheetnames == ['Cell volumes', 'Signal distances']
-    assert workbook['Cell volumes'].max_column == 3
-    assert list(workbook['Cell volumes'].values)[1:] == [('Manual','Manual cell',22),('NN',4,24)]
-    rows = list(workbook['Signal distances'].values)
-    assert len(rows[0]) == 6
-    assert rows[1] == ('Manual','Manual cell','A1',None,None,.8)
-    assert rows[2] == ('NN',4,1,2,'=BAD()',1)
-    assert rows[3] == ('NN',4,2,3,'Red',2)
-    assert workbook['Signal distances']['E3'].data_type == 's'
+    assert workbook.sheetnames == ['Measurements']
+    rows=list(workbook['Measurements'].values)
+    assert len(rows[0]) == 7
+    assert rows[1] == ('Manual','Manual cell',22,'A1',None,None,.8)
+    assert rows[2] == ('Program',4,24,1,2,'=BAD()',1)
+    assert rows[3] == ('Program',4,24,2,3,'Red',2)
+    assert workbook['Measurements']['F3'].data_type == 's'
     workbook.close()
 
 

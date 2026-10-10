@@ -13,7 +13,7 @@ Under **Pipeline and settings**, a **Minimum roundness** slider (default 0.72;
 0 disables it) rejects irregular 3D contours without reshaping accepted cells.
 Training buttons and model-folder pickers have been removed from Analysis.
 
-Fine-tuned StarDist 2D is now the default, with adjacent contours linked into 3D cells. Signals-first searches the scan for
+Both-detector consensus is now the default: sensitive StarDist and the center/box detector must agree before a redrawn contour is kept. Fine-tuned StarDist 2D remains available, with adjacent contours linked into 3D cells. Signals-first searches the scan for
 signal centers, keeps signal-supported cell boxes, draws their contours and then
 rechecks signals inside accepted cells. The whole-scan scouting context is new
 for the existing signal model; inspect [the experiment](reports/signal-first/README.md)
@@ -162,4 +162,4 @@ FISH Analysis supports per-scan cell/signal channel roles and an additional
 
 ## StarDist attribution
 
-The default cell model is fine-tuned from the official single-channel fluorescence checkpoint `2D_versatile_fluo`. Please cite Uwe Schmidt, Martin Weigert, Coleman Broaddus and Gene Myers, **Cell Detection with Star-convex Polygons**, MICCAI 2018, [doi:10.1007/978-3-030-00934-2_30](https://doi.org/10.1007/978-3-030-00934-2_30), [paper](https://arxiv.org/abs/1806.03535). The original weights’ BSD-3-Clause license is bundled at `models/cells-stardist2d/PRETRAINED-LICENSE.txt`.
+The optional fine-tuned StarDist 2D cell model is fine-tuned from the official single-channel fluorescence checkpoint `2D_versatile_fluo`. Please cite Uwe Schmidt, Martin Weigert, Coleman Broaddus and Gene Myers, **Cell Detection with Star-convex Polygons**, MICCAI 2018, [doi:10.1007/978-3-030-00934-2_30](https://doi.org/10.1007/978-3-030-00934-2_30), [paper](https://arxiv.org/abs/1806.03535). The original weights’ BSD-3-Clause license is bundled at `models/cells-stardist2d/PRETRAINED-LICENSE.txt`.

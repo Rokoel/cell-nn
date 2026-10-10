@@ -9,19 +9,12 @@ import h5py
 from ..models import LibraryEntry
 from ..pipeline.runner import read_prediction
 from ..pipeline.segmentation import checkpoint
-from ..reader import ImarisReader, load_dataset
+from ..reader import ImarisReader, load_dataset, entry_for_path
 from .imaris_scene import scene_xml
 from .results import validated_result, write_tables
 
 
 def _copy_image(source, destination, emit, cancel):
-    # The FISH dataset stores annotations externally. Refuse embedded scenes
-    # instead of quietly exporting stale annotations inside a supposedly new image.
-    if h5py.is_hdf5(source):
-        with h5py.File(source, 'r') as image:
-            if any(key.startswith('Scene') for key in image):
-                raise ValueError('This exporter requires an image with external .imx annotations, '
-                                 'as in FISH. Embedded Imaris scenes are not supported.')
     before = source.stat()
     total, copied = before.st_size, 0
     digest = hashlib.sha256()
@@ -38,7 +31,22 @@ def _copy_image(source, destination, emit, cancel):
     with destination.open('rb') as stream:
         if hashlib.file_digest(stream, 'sha256').hexdigest() != digest.hexdigest():
             raise ValueError('The exported image differs from its source.')
-    return digest.hexdigest()
+    # Replace embedded scene objects with the companion's current annotations.
+    # Copying first preserves all image datasets, acquisition metadata and pyramids.
+    embedded = False
+    if h5py.is_hdf5(destination):
+        with h5py.File(destination, 'r') as image:
+            embedded = any(k.startswith('Scene') for k in image) or any(k.startswith('Scene') for k in image.attrs)
+    if embedded:
+        with h5py.File(destination, 'r+') as image:
+            for key in list(image):
+                if key.startswith('Scene'):
+                    del image[key]
+            for key in list(image.attrs):
+                if key.startswith('Scene'):
+                    del image.attrs[key]
+    with destination.open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
 def _publish(staging, destinations):
@@ -56,7 +64,7 @@ def _publish(staging, destinations):
         raise
 
 
-def export_result(report_path, target, emit=lambda event: None, cancel=None):
+def export_result(report_path, target, emit=lambda event: None, cancel=None, source_scene=None):
     """Publish a new IMS/IMX pair and tables; refuse to overwrite any existing file."""
     target = Path(target).expanduser().resolve()
     if target.suffix.lower() != '.ims':
@@ -80,12 +88,29 @@ def export_result(report_path, target, emit=lambda event: None, cancel=None):
     target.parent.mkdir(parents=True, exist_ok=True)
     from .manual import manual_measurements
     emit(dict(kind='progress', phase='Reading manual cell volumes and signal distances', current=0, total=1))
+    if source_scene: report['scene'] = str(source_scene)
     report['manual_measurements'] = manual_measurements(report, cancel)
+    source_entry=LibraryEntry(Path(report['image']),Path(source_scene)) if source_scene else entry_for_path(report['image'])
+    original_scene=load_dataset(source_entry).scene
+    combined=None
+    if original_scene.surfaces or original_scene.measurements or original_scene.contours:
+        from ..scenes import parse_scene
+        from copy import deepcopy
+        generated=parse_scene(scene_xml(target.name,surfaces,metadata,report))
+        combined=deepcopy(original_scene)
+        combined.surfaces.extend(generated.surfaces)
+        combined.measurements.extend(generated.measurements)
+    if original_scene.warnings and any('Unsupported' in w or 'Cannot read' in w for w in original_scene.warnings):
+        raise ValueError('Some imported annotations could not be read; export cannot safely discard them: '+'; '.join(original_scene.warnings))
     with tempfile.TemporaryDirectory(prefix='.fish-export-', dir=target.parent) as temporary:
         staging = Path(temporary)
         source = Path(report['image'])
         digest = _copy_image(source, staging / target.name, emit, cancel)
-        (staging / target.with_suffix('.imx').name).write_bytes(scene_xml(target.name, surfaces, metadata, report))
+        if combined is not None:
+            from .edit_export import editable_scene_xml
+            scene_data=editable_scene_xml(target.name,combined,metadata)
+        else: scene_data=scene_xml(target.name,surfaces,metadata,report)
+        (staging / target.with_suffix('.imx').name).write_bytes(scene_data)
         write_tables(staging, report, target.stem + '.')
         write_excel(staging / target.with_suffix('.xlsx').name, report)
         annotation_report = dict(report, engine='fish-scan-export', mode='export', image=target.name, scene=target.with_suffix('.imx').name,
@@ -97,7 +122,12 @@ def export_result(report_path, target, emit=lambda event: None, cancel=None):
         reopened = load_dataset(LibraryEntry(staging / target.name, staging / target.with_suffix('.imx').name))
         expected_points = len(report['points']) * (2 if report.get('measurement') else 1)
         expected_lines = len(report['points']) if report.get('measurement') else 0
-        if (len(reopened.scene.surfaces) != len(surfaces) or reopened.scene.warnings
+        expected_surfaces=len(surfaces)
+        if combined is not None:
+            expected_surfaces=len(combined.surfaces)
+            expected_points=sum(len(m.points) for m in combined.measurements)
+            expected_lines=sum(len(m.edges) for m in combined.measurements)
+        if (len(reopened.scene.surfaces) != expected_surfaces or reopened.scene.warnings
                 or sum(len(group.points) for group in reopened.scene.measurements) != expected_points
                 or sum(len(group.edges) for group in reopened.scene.measurements) != expected_lines):
             raise ValueError('Exported annotations failed the reload check.')

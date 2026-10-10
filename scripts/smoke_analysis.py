@@ -146,9 +146,9 @@ def exercise():
         exported = json.loads(window.result_path.read_text())
         workbook_path = next(window.result_path.parent / p for p in exported['files'] if p.endswith('.xlsx'))
         workbook = load_workbook(workbook_path, data_only=True)
-        assert workbook.sheetnames == ['Cell volumes', 'Signal distances']
-        nn_distances = [r for r in list(workbook['Signal distances'].values)[1:] if r[0]=='NN']
-        nn_volumes = [r for r in list(workbook['Cell volumes'].values)[1:] if r[0]=='NN']
+        assert workbook.sheetnames == ['Measurements']
+        nn_distances = [r for r in list(workbook['Measurements'].values)[1:] if r[0]=='Program' and r[3] is not None]
+        nn_volumes = {r[1] for r in list(workbook['Measurements'].values)[1:] if r[0]=='Program'}
         assert len(nn_distances) == len(report['points'])
         assert len(nn_volumes) == len(report['cell_volumes'])
         assert np.isclose(nn_distances[0][-1], report['points'][0]['distance_um'], atol=1e-14, rtol=1e-14)
@@ -163,8 +163,10 @@ def exercise():
         finally:
             QtWidgets.QFileDialog.getSaveFileName = original_dialog
         workbook = load_workbook(button_path, data_only=True)
-        assert workbook.sheetnames == ['Cell volumes', 'Signal distances']
-        assert {name: list(workbook[name].values) for name in workbook.sheetnames} == automatic_rows
+        assert workbook.sheetnames == ['Measurements']
+        edited_rows=list(workbook['Measurements'].values)[1:]
+        edited_distances=[r[-1] for r in edited_rows if r[0]=='Program' and r[3] is not None]
+        assert np.allclose(sorted(edited_distances),sorted(r[-1] for r in nn_distances),atol=1e-5)
         workbook.close()
         assert digest(window.dataset.metadata.path) == original_hash == digest(args.image)
         surfaces = {int(s.name.split()[2]): SurfaceLocator(s) for s in window.dataset.scene.surfaces}

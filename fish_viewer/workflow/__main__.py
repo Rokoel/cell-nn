@@ -12,6 +12,7 @@ def main():
     parser = argparse.ArgumentParser(description='Filter and export cell/signal predictions.')
     parser.add_argument('operation', choices=['filter', 'measure', 'export', 'unannotated'])
     parser.add_argument('--report')
+    parser.add_argument('--scene', help='Original IMX annotation companion for export')
     parser.add_argument('--image', help='Source IMS for an unannotated copy')
     parser.add_argument('--output', required=True)
     parser.add_argument('--cancel-file')
@@ -33,7 +34,7 @@ def main():
             report = measure_result(args.report, args.output, emit, cancel)
         elif args.operation == 'export':
             from .export import export_result
-            report = export_result(args.report, args.output, emit, cancel)
+            report = export_result(args.report, args.output, emit, cancel, source_scene=args.scene)
         else:
             from .export import export_unannotated
             report = export_unannotated(args.image, args.output, emit, cancel)

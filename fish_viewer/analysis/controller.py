@@ -21,9 +21,9 @@ STAGES = [('cells', 'Detecting cell contours'), ('signals', 'Finding signals ins
 
 def default_models():
     root = Path(__file__).resolve().parents[2]
-    cells, signals = root / 'models/cells-stardist2d', root / 'models/signals-center-unet'
+    cells, signals = root / 'models/cells-sensitive', root / 'models/signals-center-unet'
     if not (cells / 'fish-model.json').exists():
-        raise FileNotFoundError('The bundled fine-tuned StarDist2D model is missing.')
+        raise FileNotFoundError('The bundled sensitive StarDist model for consensus is missing.')
     if not (signals / 'signal-model.json').exists():
         signals = root / 'artifacts/signal-fish/training/signal-train-20260919-020312-268747/model'
     return cells, signals
@@ -54,11 +54,11 @@ def default_proposal_model():
 
 def migrate_bundled_defaults(settings):
     """Upgrade former bundled defaults once, preserving custom model choices."""
-    if settings.value('default_pipeline_version', '') == 'finetuned-stardist2d-1':
+    if settings.value('default_pipeline_version', '') == 'consensus-editable-1':
         return
     root = Path(__file__).resolve().parents[2]
-    if settings.value('pipeline', '') in ('', 'conservative'):
-        settings.setValue('pipeline', 'stardist2d')
+    if settings.value('pipeline', '') in ('', 'conservative', 'stardist2d'):
+        settings.setValue('pipeline', 'consensus')
     value = settings.value('cell_model', '')
     bundled = { (root / 'models' / name).resolve() for name in
                 ('cells', 'cells-sensitive', 'cells-conservative', 'cells-preprocessed', 'cells-stardist2d', 'proposals') }
@@ -71,7 +71,7 @@ def migrate_bundled_defaults(settings):
     value = settings.value('signal_model', '')
     if value and Path(value).resolve() == (root / 'models/signals').resolve():
         settings.setValue('signal_model', str(default_models()[1]))
-    settings.setValue('default_pipeline_version', 'finetuned-stardist2d-1')
+    settings.setValue('default_pipeline_version', 'consensus-editable-1')
 
 
 def check_models(cells, signals):
@@ -102,9 +102,10 @@ class AnalysisController(QtCore.QObject):
         self.stopping = False
         self.closing = False
 
-    def start(self, image, output, cells, signals, device='auto', refinement=None, membrane_snap=None, recovery=None, stardist_proposals=False, consensus_model=None, boundary_guidance=None, roundness=None, signal_first=False, cell_channel=None, signal_channels=None):
+    def start(self, image, output, cells, signals, device='auto', refinement=None, membrane_snap=None, recovery=None, stardist_proposals=False, consensus_model=None, boundary_guidance=None, roundness=None, signal_first=False, cell_channel=None, signal_channels=None, source_scene=None):
         if self.busy:
             raise ValueError('A scan is already being processed.')
+        self.source_scene = str(Path(source_scene).resolve()) if source_scene else None
         manifest = check_models(cells, signals)
         if cell_channel is not None and (type(cell_channel) is not int or cell_channel<0):
             raise ValueError('Cell channel must be a nonnegative channel index.')
@@ -192,7 +193,7 @@ class AnalysisController(QtCore.QObject):
         self.directory.mkdir(parents=True)
         self.cancel_file = self.directory / 'cancel'
         self.stopping = False
-        self.state = dict(version=1, engine='fish-analysis', status='running', source=str(self.image),
+        self.state = dict(version=1, engine='fish-analysis', status='running', source=str(self.image), source_scene=self.source_scene,
                           cell_model=str(Path(cells).resolve()), signal_model=self.signal_model, device=device,
                           processed_time=0, stages={})
         self.state['refinement_model'] = self.refinement_model
@@ -405,7 +406,7 @@ class AnalysisController(QtCore.QObject):
             elif self.stage == 'measure':
                 self.state['signal_report'] = str((Path(report['directory']) / 'report.json').relative_to(self.directory))
                 target = self.directory / 'export' / (self.image.stem + '_measured.ims')
-                self._launch(len(self.stages)-1, ['-m', 'fish_viewer.workflow', 'export', '--report', str(Path(report['directory']) / 'report.json'),
+                self._launch(len(self.stages)-1, ['-m', 'fish_viewer.workflow', 'export', *(['--scene', self.source_scene] if self.source_scene else []), '--report', str(Path(report['directory']) / 'report.json'),
                     '--output', str(target), '--cancel-file', str(self.cancel_file)])
             else:
                 self.state.update(status='complete', cells=report['cells'], signals=report['signals'],

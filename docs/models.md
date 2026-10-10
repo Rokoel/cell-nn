@@ -19,7 +19,7 @@ All paths below are relative to the project folder, `/home/rokoel/Documents/cell
 | Balanced StarDist | `models/cells` | Previous cell detector |
 | Previous boundary U-Net | `models/refinement-base` | Earlier boundary checkpoint |
 
-The Analysis default is **Fine-tuned StarDist 2D**, followed by the unchanged signal-center U-Net. Choose another fixed preset through **Pipeline and settings**. Analysis does not expose training buttons or model-folder pickers. The center/box and surface-loss crop models remain available through their preset; the other checkpoints are retained for reproducibility. Bundled checksums are recorded in `models/origins.json`.
+The Analysis default is **Both-detector consensus**: sensitive StarDist proposals are redrawn with `refinement-bias-candidate` and retained when the center/box detector agrees. The unchanged signal-center U-Net then finds signals. Fine-tuned StarDist 2D remains available as an optional preset. Choose another fixed preset through **Pipeline and settings**. Analysis does not expose training buttons or model-folder pickers. The center/box and surface-loss crop models remain available through their preset; the other checkpoints are retained for reproducibility. Bundled checksums are recorded in `models/origins.json`.
 
 The 2D checkpoint was fine-tuned from the official `2D_versatile_fluo` fluorescence model. Its BSD-3-Clause license is in the model folder. Please cite Schmidt et al., **Cell Detection with Star-convex Polygons**, MICCAI 2018, [paper](https://arxiv.org/abs/1806.03535). See [the 2D guide](stardist2d.md) for training and inference details.
 

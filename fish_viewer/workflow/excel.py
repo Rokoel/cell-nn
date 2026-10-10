@@ -1,4 +1,4 @@
-"""Exactly two measurement lists: manual/NN volumes and signal-border distances."""
+"""A single measurement sheet containing cell volumes and signal distances."""
 from pathlib import Path
 import os
 import tempfile
@@ -33,18 +33,21 @@ def write_excel(path, report):
         for column in page.columns:
             page.column_dimensions[column[0].column_letter].width = min(55, max(16, max(len(str(c.value or '')) for c in column) + 2))
 
-    sheet('Cell volumes', ['Source', 'Cell', 'Volume (µm³)'],
-          [['Manual', cell['cell_id'], cell.get('volume_um3')] for cell in manual['cells']]
-          + [['NN', cell['cell_id'], cell.get('volume_um3')] for cell in report.get('cell_volumes', [])])
-    distances = []
-    for source, points in [('Manual', manual['points']), ('NN', report.get('points', []))]:
+    rows=[]
+    for source, cells, points in [('Manual', manual['cells'], manual['points']),
+                                  ('Program', report.get('cell_volumes', []), report.get('points', []))]:
+        volumes={c['cell_id']:c.get('volume_um3') for c in cells}
+        covered=set()
         for point in points:
-            channel = point.get('channel')
-            name = point.get('channel_name') if source == 'Manual' else (
-                report['channels'][channel]['name'] if channel is not None else None)
-            distances.append([source, point.get('cell_id'), point['signal_id'],
-                              channel + 1 if channel is not None else None, name, point.get('distance_um')])
-    sheet('Signal distances', ['Source', 'Cell', 'Signal', 'Channel (1-based)', 'Channel name', 'Distance (µm)'], distances)
+            channel=point.get('channel')
+            name=point.get('channel_name')
+            if name is None and channel is not None:
+                name=report['channels'][channel]['name']
+            cell=point.get('cell_id'); covered.add(cell)
+            rows.append([source,cell,volumes.get(cell),point['signal_id'],
+                         channel+1 if channel is not None else None,name,point.get('distance_um')])
+        rows.extend([source,c['cell_id'],c.get('volume_um3'),None,None,None,None] for c in cells if c['cell_id'] not in covered)
+    sheet('Measurements', ['Source','Cell','Volume (µm³)','Signal','Channel (1-based)','Channel name','Distance (µm)'], rows)
     fd, temporary = tempfile.mkstemp(suffix='.xlsx', prefix='.fish-', dir=path.parent)
     os.close(fd)
     try:

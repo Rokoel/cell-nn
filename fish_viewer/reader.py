@@ -148,19 +148,29 @@ class ImarisReader:
     def embedded_scene(self) -> Scene:
         if not self.hdf:
             return Scene()
+        from .embedded import content_scene
         with h5py.File(self.path, 'r') as f:
-            for path in ('Scene/Content', 'Scene/Scene', 'Scene8/Content'):
-                if path in f and isinstance(f[path], h5py.Dataset):
-                    raw = f[path][()]
-                    data = raw.tobytes() if isinstance(raw, np.ndarray) else raw
-                    try:
-                        return parse_scene(data, self.path)
-                    except Exception as exc:
-                        return Scene(warnings=[f'Cannot read embedded scene: {exc}'])
-            if 'Scene' in f or 'Scene8' in f:
-                return Scene(warnings=['This file contains a binary scene schema that is not supported. '
-                    'An Imaris 5/6 XML .imx companion can be read.'])
-        return Scene()
+            result = content_scene(f, decode)
+            result.source = self.path
+            for path in ('Scene8/Data', 'Scene/Data', 'Scene/Content', 'Scene/Scene', 'Scene8/Content'):
+                if path not in f or not isinstance(f[path], h5py.Dataset):
+                    continue
+                raw = f[path][()]
+                if isinstance(raw, np.ndarray) and raw.dtype.kind == 'O': raw = raw.flat[0]
+                data = raw.tobytes() if isinstance(raw, np.ndarray) else raw
+                try:
+                    parsed = parse_scene(data.rstrip(b'\x00'), self.path)
+                except (ET.ParseError, TypeError, ValueError) as exc:
+                    result.warnings.append(f'Cannot read embedded scene XML {path}: {exc}')
+                    continue
+                # Binary object data accompanies XML viewer settings; prefer full
+                # XML geometry when present, otherwise use the binary objects.
+                if parsed.surfaces: result.surfaces = parsed.surfaces
+                if parsed.measurements: result.measurements = parsed.measurements
+                result.contours.extend(parsed.contours)
+                result.warnings.extend(parsed.warnings)
+                break
+            return result
 
 
 def entry_for_path(path: str | Path) -> LibraryEntry:

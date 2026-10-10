@@ -44,11 +44,10 @@ def main():
                 with (ROOT/'models'/label/name).open('rb') as stream:
                     assert hashlib.file_digest(stream,'sha256').hexdigest()==digest, f'Model checksum mismatch: {label}/{name}'
     tf,StarDist3D,_,info=runtime('cpu')
-    from stardist.models import StarDist2D
-    cell_model=StarDist2D(None,name=cells.name,basedir=str(cells.parent))
     manifest=json.loads((cells/'fish-model.json').read_text())
+    cell_model=StarDist3D(None,name=cells.name,basedir=str(cells.parent))
     cell_model.load_weights(manifest['checkpoint'])
-    probability,distances=cell_model.predict(np.zeros((32,32),np.float32),axes='YX',verbose=0)
+    probability,distances=cell_model.predict(np.zeros((16,16,16),np.float32),axes='ZYX',verbose=0)
     assert np.isfinite(probability).all() and np.isfinite(distances).all()
     conservative=ROOT/'models/cells-conservative'
     old=StarDist3D(None,name=conservative.name,basedir=str(conservative.parent))
@@ -155,7 +154,7 @@ def main():
                 assert report['passed'], f'Empty-signal controls failed for {label}'
                 direct_controls[label] = report
     print(json.dumps(dict(status='complete',default_cell_model=cells.name,default_signal_model=signals.name,default_signal_engine=default_signal_manifest['engine'],runtime=info,cell_probability_shape=list(probability.shape),
-                         default_boundary_model=None, optional_boundary_model=Path(boundary).name if boundary else None,
+                         default_pipeline="consensus", default_boundary_model=Path(boundary).name if boundary else None, optional_boundary_model=Path(boundary).name if boundary else None,
                          signal_score=score.tolist(),boundary_logit_shape=boundary_shapes.get(Path(boundary).name if boundary else ''),
                          learned_boundary_shape=list(learned_output.shape),
                          sensitive_cell_probability_shape=list(sensitive_probability.shape),

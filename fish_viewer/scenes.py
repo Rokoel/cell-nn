@@ -152,18 +152,20 @@ def parse_scene(data: bytes | str, source: Path | None = None) -> Scene:
                 for line in element.findall('line'):
                     points = np.asarray([[float(v.get('x')), float(v.get('y'))] for v in line.findall('vertex')])
                     if len(points) >= 3 and np.isfinite(points).all():
-                        result.contours.append(Contour(f'{name} · {"XYZ"[axis]} slice {plane + 1}', points, axis, plane, color, visible))
+                        result.contours.append(Contour(f'{name} · {"XYZ"[axis]} slice {plane + 1}', points, axis, plane, color, visible, native_xml=ET.tostring(manual)))
         except (ValueError, TypeError) as exc:
             result.warnings.append(f'Unmeshed contour {name}: {exc}')
     for tag in ('bpSpots', 'bpFilaments'):
         if root.find('.//' + tag) is not None:
             result.warnings.append(f'{tag} annotations are not supported by this XML reader.')
-    if (any(el.tag is ET.Comment and (el.text or '').startswith('FISH Viewer exported detections;') for el in root)
-            or any((el.text or '').startswith('FISH Viewer exported detections;') for el in root.iter('historyLog'))):
-        for surface in result.surfaces:
-            surface.source = 'prediction'
-        for measurement in result.measurements:
-            measurement.source = 'signal_prediction'
+    exported = (any(el.tag is ET.Comment and (el.text or '').startswith('FISH Viewer exported detections;') for el in root)
+            or any((el.text or '').startswith('FISH Viewer exported detections;') for el in root.iter('historyLog')))
+    for objects in (result.surfaces, result.measurements, result.contours):
+        for obj in objects:
+            if obj.name.startswith('Manual · '): obj.source = 'manual'
+            elif obj.name.startswith('Program · '): obj.source = 'program'
+            elif exported: obj.source = 'signal_prediction' if isinstance(obj, Measurement) else 'prediction'
+            if obj.name.startswith(('Manual · ', 'Program · ')): obj.name = obj.name.split(' · ',1)[1]
     return result
 
 

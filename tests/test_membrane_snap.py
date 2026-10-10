@@ -126,8 +126,8 @@ def test_excel_remains_two_lists_with_membrane_snap_metadata(tmp_path):
                   membrane_snap=dict(config=dict(max_shift_um=.3), cells=[dict(cell_id=1, accepted=True, mean_shift_um=.05)]))
     book = load_workbook(write_excel(tmp_path / 'report.xlsx', report), read_only=True, data_only=True)
     try:
-        assert book.sheetnames == ['Cell volumes', 'Signal distances']
-        assert list(book['Cell volumes'].values)[1] == ('NN',1,10.)
+        assert book.sheetnames == ['Measurements']
+        assert list(book['Measurements'].values)[1] == ('Program',1,10.,None,None,None,None)
     finally:
         book.close()
 

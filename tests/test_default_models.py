@@ -4,7 +4,7 @@ from fish_viewer.analysis.controller import default_models, default_proposal_mod
 
 
 def test_bundled_defaults_match_requested_pipeline():
-    assert default_models()[0].name == 'cells-stardist2d'
+    assert default_models()[0].name == 'cells-sensitive'
     assert default_models()[1].name == 'signals-center-unet'
     assert Path(default_proposal_model()).name == 'proposals'
     assert Path(default_refinement_model()).name == 'refinement-bias-candidate'
@@ -42,7 +42,7 @@ def test_upgrade_v040_contour_default_once(tmp_path):
     settings.setValue('boundary_model', str(root / 'refinement'))
     migrate_bundled_defaults(settings)
     assert settings.value('boundary_model') == ''
-    assert settings.value('default_pipeline_version') == 'finetuned-stardist2d-1'
+    assert settings.value('default_pipeline_version') == 'consensus-editable-1'
     settings.setValue('boundary_model', str(root / 'refinement'))
     migrate_bundled_defaults(settings)
     assert settings.value('boundary_model') == str(root / 'refinement')
@@ -85,10 +85,10 @@ def test_conservative_worker_uses_saved_thresholds_and_original_surfaces(tmp_pat
 
 
 def test_conservative_default_migrates_to_2d_but_explicit_other_preset_survives(tmp_path):
-    for selected,expected in [('conservative','stardist2d'),('hybrid','hybrid')]:
+    for selected,expected in [('conservative','consensus'),('hybrid','hybrid')]:
         settings=QtCore.QSettings(str(tmp_path/(selected+'.ini')),QtCore.QSettings.Format.IniFormat)
         settings.setValue('default_pipeline_version','conservative-stardist-1')
         settings.setValue('pipeline',selected)
         migrate_bundled_defaults(settings)
         assert settings.value('pipeline')==expected
-        assert settings.value('default_pipeline_version')=='finetuned-stardist2d-1'
+        assert settings.value('default_pipeline_version')=='consensus-editable-1'

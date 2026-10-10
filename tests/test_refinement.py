@@ -109,8 +109,8 @@ def test_excel_remains_two_lists_with_refinement_metadata(tmp_path):
                 boundary_refinement=dict(model='example',cells=[dict(cell_id=1,accepted=False,fallback_reason='Weak membrane')]))
     path=write_excel(tmp_path/'report.xlsx',report)
     book=load_workbook(path,read_only=True,data_only=True)
-    assert book.sheetnames == ['Cell volumes', 'Signal distances']
-    assert list(book['Cell volumes'].values)[1] == ('NN',1,10.)
+    assert book.sheetnames == ['Measurements']
+    assert list(book['Measurements'].values)[1] == ('Program',1,10.,None,None,None,None)
     book.close()
 
 

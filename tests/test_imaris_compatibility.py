@@ -147,6 +147,7 @@ def test_unannotated_export_does_not_overwrite_and_cancels_cleanly(ims_file, tmp
 def test_rejects_embedded_annotations_instead_of_calling_them_unannotated(ims_file, tmp_path):
     with h5py.File(ims_file, 'r+') as image:
         image.create_group('Scene8/Content')
-    with pytest.raises(ValueError, match='Embedded Imaris scenes'):
-        export_unannotated(ims_file, tmp_path / 'clean.ims')
-    assert not (tmp_path / 'clean.ims').exists()
+    export_unannotated(ims_file, tmp_path / 'clean.ims')
+    with h5py.File(tmp_path / 'clean.ims') as clean, h5py.File(ims_file) as original:
+        assert 'Scene8' not in clean and 'Scene8' in original
+        np.testing.assert_array_equal(clean['DataSet/ResolutionLevel 0/TimePoint 0/Channel 0/Data'],original['DataSet/ResolutionLevel 0/TimePoint 0/Channel 0/Data'])

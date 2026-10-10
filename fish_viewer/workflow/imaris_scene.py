@@ -210,7 +210,7 @@ def scene_xml(image_name, surfaces, metadata, report):
 def validate_scene(root, metadata):
     """Validate native field structure in addition to our permissive scene reader."""
     native = template()
-    optional = {'bpComponentGroup'}  # A scene may have no annotation groups.
+    optional = {'bpComponentGroup', 'bpMeasurementPoints', 'bpSurfacesViewer'}  # A scene may have no annotation groups.
 
     def check(actual, expected):
         if actual.tag != expected.tag or set(actual.attrib) != set(expected.attrib):
