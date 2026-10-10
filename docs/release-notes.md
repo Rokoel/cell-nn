@@ -1,6 +1,8 @@
-# FISH Analysis v0.5.0
+# FISH Analysis v0.5.1
 
 This release adds the training-image annotator, a boundary-recognition U-Net trained from its annotations, and optional learned guidance for existing 3D contours. The established default remains the center/box detector → surface-loss contour U-Net → signal-center U-Net. Learned guidance, sensitive StarDist hybrid, consensus, membrane snapping and cell recovery remain experimental options.
+
+The Windows signal-runtime launcher now waits for a subprocess instead of using CRT interpreter replacement, fixing a crash discovered during v0.5.0 release verification. Version v0.5.0 was not published.
 
 Linux and Windows source/model ZIPs include all three apps (Analysis, Viewer and Annotator), eleven model folders, launch/setup scripts, evaluation reports and model checksums. Python 3.12 and internet access for initial dependency setup are required. Windows inference uses CPU; Linux also supports GPU setup. Original FISH scans, training caches and user annotation images are not distributed.
 

@@ -2,6 +2,7 @@
 from pathlib import Path
 import importlib.util
 import os
+import subprocess
 import sys
 
 DIRECT_ENGINES = ('signal-center-unet3d', 'signal-spotiflow3d')
@@ -32,4 +33,9 @@ def dispatch(arguments):
                  if not ('site-packages' in p and '/nvidia/' in p.replace('\\', '/'))]
         environment['LD_LIBRARY_PATH'] = os.pathsep.join(paths)
         environment.pop('FISH_CUDA_PATH_READY', None)
-    os.execve(python, [python, '-m', 'fish_viewer.spots', *arguments], environment)
+    command = [python, '-m', 'fish_viewer.spots', *arguments]
+    if sys.platform == 'win32':
+        # Windows has no native exec replacement. Its CRT emulation can crash
+        # during interpreter replacement; retain the launcher and wait instead.
+        raise SystemExit(subprocess.run(command, env=environment).returncode)
+    os.execve(python, command, environment)

@@ -1,6 +1,24 @@
 import numpy as np
 import pytest
 
+
+def test_windows_signal_dispatch_preserves_arguments_environment_and_exit_code(monkeypatch):
+    from types import SimpleNamespace
+    from fish_viewer.spots import runtime
+    monkeypatch.setattr(runtime.sys, 'platform', 'win32')
+    monkeypatch.setattr(runtime, 'interpreter', lambda: 'isolated-python.exe')
+    calls = []
+    def run(command, *, env):
+        calls.append((command, env))
+        return SimpleNamespace(returncode=7)
+    monkeypatch.setattr(runtime.subprocess, 'run', run)
+    with pytest.raises(SystemExit) as exited:
+        runtime.dispatch(['--mode', 'controls', '--model', 'model with spaces'])
+    assert exited.value.code == 7
+    assert calls[0][0] == ['isolated-python.exe', '-m', 'fish_viewer.spots',
+                           '--mode', 'controls', '--model', 'model with spaces']
+    assert calls[0][1]['PYTHONPATH'].startswith(str(runtime.Path(runtime.__file__).resolve().parents[2]))
+
 from fish_viewer.spots.config import CenterConfig
 from fish_viewer.spots.data import gaussian_targets, exclusion_mask, resample_crop
 from fish_viewer.spots.detection import local_centers
