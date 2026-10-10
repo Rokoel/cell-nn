@@ -2,15 +2,17 @@
 
 from copy import deepcopy
 from pathlib import Path
+
 import h5py
 import numpy as np
 import pytest
-from test_workflow import signal_result  # noqa: F401 - shared calibrated fixture
 from openpyxl import load_workbook
-from fish_viewer.models import Measurement, Scene, Surface
-from fish_viewer.reader import load_dataset, entry_for_path
+from test_workflow import signal_result  # noqa: F401 - shared calibrated fixture
+
 from fish_viewer.analysis.annotations import AnnotationDocument, origin
-from fish_viewer.workflow.edit_export import export_document, editable_scene_xml
+from fish_viewer.models import Measurement, Scene, Surface
+from fish_viewer.reader import entry_for_path, load_dataset
+from fish_viewer.workflow.edit_export import editable_scene_xml, export_document
 from fish_viewer.workflow.volumes import surface_volume
 
 
@@ -195,6 +197,7 @@ def test_hdf_binary_spots_meshes_and_vlen_scene_xml(ims_file):
 @pytest.mark.gui
 def test_editor_ui_manual_import_selection_edit_undo_and_hide(qapp, ims_file, tmp_path):
     from PySide6 import QtCore
+
     from fish_viewer.analysis.app import AnalysisWindow
 
     doc = document(ims_file)
@@ -240,6 +243,152 @@ def test_slice_border_point_move_is_closed_and_undoable(qapp, ims_file):
     assert len(doc.dataset.scene.surfaces[0].vertices) == 8
 
 
+@pytest.mark.parametrize("axis,coordinate", [(0, 14), (1, 23), (2, 32)])
+def test_repeated_slice_edits_keep_neighbor_points_fixed(
+    qapp, ims_file, axis, coordinate
+):
+    from fish_viewer.views import mesh_for, slice_segments
+
+    doc = document(ims_file)
+    surface = doc.dataset.scene.surfaces[0]
+    section = np.unique(
+        slice_segments(mesh_for(surface), axis, coordinate).reshape(-1, 3), axis=0
+    )
+    old = section[0].copy()
+    doc.move_section(0, old, old, axis=axis)
+    assert doc.volumes[0] == pytest.approx(96)
+    assert mesh_for(doc.dataset.scene.surfaces[0]).n_open_edges == 0
+    vertex_count = len(doc.dataset.scene.surfaces[0].vertices)
+    for _ in range(2):
+        new = old.copy()
+        new[(axis + 1) % 3] -= 0.2
+        doc.move_section(0, old, new, axis=axis)
+        surface = doc.dataset.scene.surfaces[0]
+        actual = np.unique(
+            slice_segments(mesh_for(surface), axis, coordinate).reshape(-1, 3), axis=0
+        )
+        section[np.linalg.norm(section - old, axis=1) < 1e-7] = new
+        assert len(actual) == len(section)
+        for point in section:
+            assert np.linalg.norm(actual - point, axis=1).min() < 1e-7
+        assert len(surface.vertices) == vertex_count
+        assert mesh_for(surface).n_open_edges == 0
+        old = new
+    doc.undo.undo()
+    doc.undo.undo()
+    assert doc.volumes[0] == pytest.approx(96)
+    doc.undo.undo()
+    assert len(doc.dataset.scene.surfaces[0].vertices) == 8
+
+
+@pytest.mark.gui
+@pytest.mark.parametrize("axis,index", [(0, 0), (1, 1), (2, 1)])
+@pytest.mark.parametrize("tool", [0, 1, 2])
+@pytest.mark.parametrize(
+    "zoom,click_offset", [(0.5, 0), (2.0, 0), (0.5, 9), (2.0, 9), (0.1, 0)]
+)
+def test_drag_slice_contour_with_mouse(
+    qapp, ims_file, tmp_path, axis, index, tool, zoom, click_offset
+):
+    from PySide6 import QtCore, QtGui, QtTest
+
+    from fish_viewer.analysis.app import AnalysisWindow
+
+    window = AnalysisWindow(
+        off_screen=True,
+        settings=QtCore.QSettings(
+            str(tmp_path / "drag.ini"), QtCore.QSettings.Format.IniFormat
+        ),
+    )
+    try:
+        window.resize(1300, 900)
+        window.show()
+        window.set_dataset(document(ims_file).dataset, None)
+        editor, view = window.editor, window.slice_view
+        editor.tree.setCurrentItem(editor.tree.topLevelItem(0).child(0))
+        assert editor.edit.isChecked()
+        editor.tool.setCurrentIndex(tool)
+        window.change_axis(axis)
+        window.change_slice(index)
+        view.fit()
+        view.scale(zoom, zoom)
+        qapp.processEvents()
+        assert editor.handles
+        np.testing.assert_allclose(
+            [h.xyz[2 - axis] for h in editor.handles], view.coordinate
+        )
+        positions = np.array([h.xyz for h in editor.handles])
+        assert len(np.unique(positions, axis=0)) == len(positions)
+        handle = next(h for h in editor.handles if h.vertex is None)
+        original = handle.xyz.copy()
+        before = window.dataset.scene.surfaces[0].vertices.copy()
+        start = view.mapFromScene(handle.pos()) + QtCore.QPoint(click_offset, 0)
+        end = start + QtCore.QPoint(-20, -10)
+        expected = original.copy()
+        delta = view.mapToScene(end) - view.mapToScene(start)
+        u, v = view.projection_axes
+        expected[u] += delta.x()
+        expected[v] += delta.y()
+        assert handle in view.items(start)
+        QtTest.QTest.mousePress(
+            view.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=start
+        )
+        assert view.scene().mouseGrabberItem() is handle
+        move = QtGui.QMouseEvent(
+            QtCore.QEvent.Type.MouseMove,
+            QtCore.QPointF(end),
+            QtCore.QPointF(view.viewport().mapToGlobal(end)),
+            QtCore.Qt.MouseButton.NoButton,
+            QtCore.Qt.MouseButton.LeftButton,
+            QtCore.Qt.KeyboardModifier.NoModifier,
+        )
+        qapp.sendEvent(view.viewport(), move)
+        # Lines must follow during the drag, before changing saved geometry.
+        np.testing.assert_array_equal(window.dataset.scene.surfaces[0].vertices, before)
+        overlay = next(
+            item for item in view._overlays if item.data(0) == ("surface", 0)
+        )
+        preview = overlay.path()
+        assert any(
+            np.allclose(
+                [preview.elementAt(i).x, preview.elementAt(i).y], expected[[u, v]]
+            )
+            for i in range(preview.elementCount())
+        )
+        QtTest.QTest.mouseRelease(
+            view.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=end
+        )
+        qapp.processEvents()
+        after = window.dataset.scene.surfaces[0].vertices
+        assert not np.array_equal(before, after)
+        # Introducing slice vertices must preserve all original mesh vertices
+        # and every other displayed border point.
+        np.testing.assert_array_equal(after[: len(before)], before)
+        assert np.linalg.norm(after - expected, axis=1).min() < 1e-7
+        remaining = positions[np.linalg.norm(positions - original, axis=1) > 1e-6]
+        displayed = np.array([h.xyz for h in editor.handles])
+        assert len(displayed) == len(positions)
+        for point in remaining:
+            assert np.linalg.norm(displayed - point, axis=1).min() < 1e-6
+        from fish_viewer.views import mesh_for
+
+        assert mesh_for(window.dataset.scene.surfaces[0]).n_open_edges == 0
+        assert editor.document.undo.count() == 1
+        assert editor.document.volumes[0] != pytest.approx(96)
+        assert len(window.dataset.scene.measurements) == 1
+        assert editor.document.dataset.scene.surfaces[0].source == "program"
+        view.setFocus()
+        QtTest.QTest.keyClick(
+            view.viewport(),
+            QtCore.Qt.Key.Key_Z,
+            QtCore.Qt.KeyboardModifier.ControlModifier,
+        )
+        qapp.processEvents()
+        np.testing.assert_array_equal(window.dataset.scene.surfaces[0].vertices, before)
+    finally:
+        window.close()
+
+
 def test_multiple_spot_centers_are_individually_deletable(qapp, ims_file):
     doc = document(ims_file)
     doc.dataset.scene.measurements = [
@@ -259,6 +408,7 @@ def test_multiple_spot_centers_are_individually_deletable(qapp, ims_file):
 @pytest.mark.gui
 def test_edits_and_undo_survive_switching_scans(qapp, ims_file, tmp_path):
     from PySide6 import QtCore
+
     from fish_viewer.analysis.app import AnalysisWindow
 
     doc = document(ims_file)
@@ -288,9 +438,9 @@ def test_pipeline_export_preserves_embedded_manual_and_new_detections(
     signal_result,  # noqa: F811 - imported pytest fixture
     tmp_path,
 ):
-    from fish_viewer.workflow.results import filter_result
     from fish_viewer.workflow.distances import measure_result
     from fish_viewer.workflow.export import export_result
+    from fish_viewer.workflow.results import filter_result
 
     filtered = filter_result(signal_result, tmp_path / "work")
     measured = measure_result(

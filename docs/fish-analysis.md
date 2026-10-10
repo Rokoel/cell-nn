@@ -115,14 +115,19 @@ does not delete it or exclude it from export.
 
 Select an object in the annotation list or click its border/marker in 2D.
 **Delete selected** or **Delete** removes the object. **Ctrl+Z** restores it.
-For point editing, enable **Edit points**, drag a white dot, or choose a point
-and apply calibrated XYZ coordinates. Choose **Add contour point** or **Add
+Point editing is enabled by default: select a contour and drag a white dot.
+Contour dots show only the intersection with the current slice, without points
+from neighboring layers. Dragging always moves a dot, even when an add tool is
+selected; drag empty space to pan. You can also choose a point and apply
+calibrated XYZ coordinates. Choose **Add contour point** or **Add
 signal** and click in the current 2D slice. **Delete point** removes the selected
 mesh/contour point; for a signal it removes that signal. B points are calculated
 from the signal center and its assigned surface and are not independently moved.
 
-Dragging a slice border inserts a mesh point if needed and moves it as one
-undoable edit. Adding/removing a surface point maintains the connected triangle
+Dragging a slice border makes its intersections explicit mesh points, keeping
+the other points on that slice fixed, and moves the selected point as one
+undoable edit. Connected border lines follow the dot while dragging.
+Adding/removing a surface point maintains the connected triangle
 mesh; an unsafe deletion is rejected. Cell volumes and affected signal distances
 update immediately. Original manual A–B measurements remain unchanged until the
 corresponding signal or cell is edited. Signals with no assigned cell retain

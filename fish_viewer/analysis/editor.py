@@ -1,13 +1,16 @@
 """Minimal annotation selection and calibrated 2D point editing controls."""
 
 import numpy as np
-from shiboken6 import isValid
 from PySide6 import QtCore, QtGui, QtWidgets
-from .annotations import AnnotationDocument, origin
+from shiboken6 import isValid
+
 from ..views import mesh_for
+from .annotations import AnnotationDocument, origin
 
 
 class Handle(QtWidgets.QGraphicsEllipseItem):
+    HIT_RADIUS = 12  # Screen pixels; the visible dot remains 8 pixels across.
+
     def __init__(self, editor, vertex, xyz):
         super().__init__(-4, -4, 8, 8)
         self.editor, self.vertex, self.xyz = editor, vertex, np.array(xyz)
@@ -18,6 +21,8 @@ class Handle(QtWidgets.QGraphicsEllipseItem):
         self.setBrush(QtGui.QColor("#ffffff"))
         self.setPen(QtGui.QPen(QtGui.QColor("#205e58")))
         self.setZValue(20)
+        self.setAcceptedMouseButtons(QtCore.Qt.MouseButton.LeftButton)
+        self.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
         u, v = editor.window.slice_view.projection_axes
         self.setPos(float(xyz[u]), float(xyz[v]))
         self.setToolTip(
@@ -26,13 +31,38 @@ class Handle(QtWidgets.QGraphicsEllipseItem):
             else "Slice contour: drag to move this border point"
         )
 
+    def boundingRect(self):
+        radius = self.HIT_RADIUS
+        return QtCore.QRectF(-radius, -radius, 2 * radius, 2 * radius)
+
+    def shape(self):
+        path = QtGui.QPainterPath()
+        path.addEllipse(self.boundingRect())
+        return path
+
     def mousePressEvent(self, event):
+        self.selection = self.editor.selection
+        self.axis = 2 - self.editor.window.slice_view.axis
+        self.drag_start = event.scenePos()
+        self.initial_position = self.pos()
         if self.vertex is not None:
             self.editor.vertex.setValue(self.vertex + 1)
-        super().mousePressEvent(event)
+        self.setCursor(QtCore.Qt.CursorShape.ClosedHandCursor)
+        event.accept()
+
+    def mouseMoveEvent(self, event):
+        # Use scene coordinates explicitly so zoom and image panning cannot
+        # turn a point drag into a view drag. The slice coordinate stays fixed.
+        self.setPos(self.initial_position + event.scenePos() - self.drag_start)
+        xyz = self.xyz.copy()
+        u, v = self.editor.window.slice_view.projection_axes
+        xyz[u], xyz[v] = self.pos().x(), self.pos().y()
+        self.editor.preview_point(self.selection, self.vertex, self.xyz, xyz)
+        event.accept()
 
     def mouseReleaseEvent(self, event):
-        super().mouseReleaseEvent(event)
+        self.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
+        event.accept()
         u, v = self.editor.window.slice_view.projection_axes
         xyz = self.xyz.copy()
         xyz[u] = self.pos().x()
@@ -40,14 +70,14 @@ class Handle(QtWidgets.QGraphicsEllipseItem):
         if not np.array_equal(xyz, self.xyz):
             # Rebuilding overlays must not destroy this item during its own event.
             editor, vertex = self.editor, self.vertex
-            if vertex is None:
+            if self.selection[0] == "surface":
                 original = self.xyz.copy()
-                selection = editor.selection
+                selection, axis = self.selection, self.axis
                 QtCore.QTimer.singleShot(
                     0,
                     lambda: editor.perform(
                         lambda: editor.document.move_section(
-                            selection[1], original, xyz
+                            selection[1], original, xyz, axis=axis
                         )
                     ),
                 )
@@ -93,6 +123,7 @@ class AnnotationEditor(QtWidgets.QWidget):
         row.addWidget(self.undo_button)
         layout.addLayout(row)
         self.edit = QtWidgets.QCheckBox("Edit points (drag white dots)")
+        self.edit.setChecked(True)
         self.edit.toggled.connect(self.draw_handles)
         layout.addWidget(self.edit)
         self.tool = QtWidgets.QComboBox()
@@ -134,7 +165,7 @@ class AnnotationEditor(QtWidgets.QWidget):
         self.export.clicked.connect(self.export_scene)
         layout.addWidget(self.export)
         info = QtWidgets.QLabel(
-            "Select an object here or click it in 2D. Ctrl+wheel zooms. B points follow the nearest cell border automatically. Edited objects become Program annotations."
+            "Select a contour and drag its white dots on the current slice. Ctrl+wheel zooms; drag empty space to pan. B points follow the nearest cell border automatically. Edited objects become Program annotations."
         )
         info.setWordWrap(True)
         info.setSizePolicy(
@@ -386,26 +417,60 @@ class AnnotationEditor(QtWidgets.QWidget):
         view = self.window.slice_view
         points = self.points()
         axis = 2 - view.axis
-        ids = np.flatnonzero(
-            abs(points[:, axis] - view.coordinate)
-            <= self.window.dataset.spacing[axis] / 2
-        )
-        if self.selection[0] == "surface":
+        kind, index = self.selection
+        scene = self.window.dataset.scene
+        obj = getattr(
+            scene,
+            {
+                "surface": "surfaces",
+                "contour": "contours",
+                "measurement": "measurements",
+            }[kind],
+        )[index]
+        if not obj.visible:
+            return
+        if kind != "measurement" and not view.surfaces_visible:
+            return
+        if kind == "surface":
+            if obj.time != self.window.dataset.time:
+                return
             segments = view._cuts.get(
                 (self.selection[1], view.axis, view.index), np.empty((0, 2, 3))
             )
             section = np.unique(np.round(segments.reshape(-1, 3), 7), axis=0)
             for xyz in section[:: max(1, int(np.ceil(len(section) / 400)))]:
-                if len(ids) and np.linalg.norm(points[ids] - xyz, axis=1).min() < 1e-5:
-                    continue
-                item = Handle(self, None, xyz)
+                # Only the actual intersection with this plane is editable.
+                # Nearby mesh vertices project to the same screen locations
+                # but belong to other layers and must not cover these handles.
+                distances = np.linalg.norm(points - xyz, axis=1)
+                nearest = int(np.argmin(distances)) if len(distances) else None
+                vertex = (
+                    nearest
+                    if nearest is not None and distances[nearest] < 1e-7
+                    else None
+                )
+                xyz[axis] = view.coordinate
+                item = Handle(self, vertex, xyz)
                 view.scene().addItem(item)
                 self.handles.append(item)
+            return
+        if kind == "contour":
+            if obj.axis != axis or self.window.dataset.time != 0:
+                return
+            ids = np.flatnonzero(abs(points[:, axis] - view.coordinate) < 1e-7)
+        else:
+            if not view.markers_visible:
+                return
+            ids = np.flatnonzero(
+                abs(points[:, axis] - view.coordinate)
+                <= self.window.dataset.spacing[axis] / 2
+            )
         for i in ids:
-            if self.selection[0] == "measurement":
-                m = self.window.dataset.scene.measurements[self.selection[1]]
-                if m.labels[i].upper() == "B":
-                    continue
+            if kind == "measurement" and (
+                obj.labels[i].upper() == "B"
+                or (not obj.all_times and obj.times[i] != self.window.dataset.time)
+            ):
+                continue
             item = Handle(self, int(i), points[i])
             view.scene().addItem(item)
             self.handles.append(item)
@@ -417,6 +482,27 @@ class AnnotationEditor(QtWidgets.QWidget):
             callback()
         except (ValueError, IndexError) as exc:
             self.window.error(str(exc))
+
+    def preview_point(self, selection, vertex, original, xyz):
+        view = self.window.slice_view
+        kind, index = selection
+        if kind == "surface":
+            segments = view._cuts[(index, view.axis, view.index)].copy()
+            segments[np.linalg.norm(segments - original, axis=2) < 1e-6] = xyz
+        elif kind == "contour":
+            points = self.points().copy()
+            points[vertex] = xyz
+            segments = np.stack([points, np.roll(points, -1, axis=0)], axis=1)
+        else:
+            return
+        path = QtGui.QPainterPath()
+        u, v = view.projection_axes
+        for a, b in segments:
+            path.moveTo(float(a[u]), float(a[v]))
+            path.lineTo(float(b[u]), float(b[v]))
+        for item in view._overlays:
+            if item.data(0) == selection:
+                item.setPath(path)
 
     def delete(self):
         if self.selection:
@@ -454,6 +540,23 @@ class AnnotationEditor(QtWidgets.QWidget):
             xyz[u] = pos.x()
             xyz[v] = pos.y()
             xyz[2 - view.axis] = view.coordinate
+            position = event.position().toPoint()
+            handles = [
+                item for item in view.items(position) if isinstance(item, Handle)
+            ]
+            if handles:
+                # Expanded hit areas may overlap. Give the closest dot priority,
+                # rather than whichever handle happened to be drawn last.
+                def distance(item):
+                    delta = view.mapFromScene(item.scenePos()) - position
+                    return delta.x() ** 2 + delta.y() ** 2
+
+                closest = min(handles, key=distance)
+                for handle in self.handles:
+                    handle.setZValue(21 if handle is closest else 20)
+                view.setFocus()
+                return False
+            item = view.itemAt(position)
             if self.edit.isChecked() and self.tool.currentIndex() == 2:
                 self.perform(
                     lambda: self.document.add_signal(
@@ -469,9 +572,6 @@ class AnnotationEditor(QtWidgets.QWidget):
             ):
                 self.perform(lambda: self.document.add_vertex(*self.selection, xyz))
                 return True
-            item = view.itemAt(event.position().toPoint())
-            if isinstance(item, Handle):
-                return False
             if item and item.data(0):
                 kind, index = item.data(0)
                 for top in range(self.tree.topLevelItemCount()):

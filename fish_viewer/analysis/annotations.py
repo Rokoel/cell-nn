@@ -1,12 +1,14 @@
 """Editable calibrated annotations, independent of inference's immutable voxel archives."""
 
-from copy import deepcopy
 import hashlib
 import json
 import re
+from copy import deepcopy
+
 import numpy as np
 import pyvista as pv
 from PySide6 import QtGui
+
 from ..models import Measurement
 from ..views import mesh_for
 from ..workflow.distances import SurfaceLocator
@@ -148,7 +150,7 @@ class AnnotationDocument:
             (
                 i
                 for i, label in enumerate(m.labels)
-                if bool(re.fullmatch(r"A\d*", label.strip(), re.I))
+                if bool(re.fullmatch(r"A\d*", label.strip(), re.IGNORECASE))
             ),
             0 if len(m.points) == 1 and m.labels[0].strip().upper() != "B" else None,
         )
@@ -380,9 +382,51 @@ class AnnotationDocument:
             obj.triangles = np.vstack([obj.triangles[~affected], replacement])
         return n
 
-    def move_section(self, index, old_xyz, new_xyz):
+    @staticmethod
+    def split_surface_plane(obj, axis, coordinate):
+        """Make slice intersections explicit mesh vertices before editing one.
+
+        Shared crossing edges receive one vertex used by both adjoining faces.
+        This keeps the other slice points fixed when a border point is moved.
+        """
+        signed = obj.vertices[:, axis] - coordinate
+        distances = signed[obj.triangles]
+        crossing = (distances.min(axis=1) < -1e-7) & (distances.max(axis=1) > 1e-7)
+        vertices = list(obj.vertices.copy())
+        edge_vertices = {}
+        replacement = []
+        for triangle in obj.triangles[crossing]:
+            for side in (-1, 1):
+                polygon = []
+                for a, b in zip(triangle, np.roll(triangle, -1)):
+                    if side * signed[a] >= -1e-7:
+                        polygon.append(int(a))
+                    if (signed[a] < -1e-7 and signed[b] > 1e-7) or (
+                        signed[b] < -1e-7 and signed[a] > 1e-7
+                    ):
+                        edge = tuple(sorted((int(a), int(b))))
+                        if edge not in edge_vertices:
+                            fraction = signed[a] / (signed[a] - signed[b])
+                            xyz = obj.vertices[a] + fraction * (
+                                obj.vertices[b] - obj.vertices[a]
+                            )
+                            xyz[axis] = coordinate
+                            edge_vertices[edge] = len(vertices)
+                            vertices.append(xyz)
+                        polygon.append(edge_vertices[edge])
+                replacement.extend(
+                    [polygon[0], polygon[j], polygon[j + 1]]
+                    for j in range(1, len(polygon) - 1)
+                )
+        if replacement:
+            obj.vertices = np.asarray(vertices)
+            obj.triangles = np.vstack([obj.triangles[~crossing], replacement])
+
+    def move_section(self, index, old_xyz, new_xyz, axis=None):
         def change():
             obj = self.dataset.scene.surfaces[index]
+            if axis is not None:
+                self.split_surface_plane(obj, axis, old_xyz[axis])
             vertex = self.insert_surface_vertex(obj, old_xyz)
             obj.vertices[vertex] = new_xyz
             obj.source = "program"

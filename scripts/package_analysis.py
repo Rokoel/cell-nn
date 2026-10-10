@@ -61,6 +61,7 @@ def main():
                  'benchmark_annotation_boundaries.py', 'summarize_annotation_boundaries.py', 'benchmark_signal_first.py',
                  'benchmark_cell_consensus.py', 'benchmark_stardist_hybrid.py'):
         shutil.copy2(ROOT / 'scripts' / name, destination / 'scripts' / name)
+    shutil.copy2(ROOT / 'scripts/benchmark_consensus_channels.py', destination / 'scripts/benchmark_consensus_channels.py')
     (destination / 'docs').mkdir()
     for name in ('fish-analysis.md', 'imaris-export.md', 'signal-detection.md', 'neural-training.md', 'models.md'):
         shutil.copy2(ROOT / 'docs' / name, destination / 'docs' / name)
@@ -100,6 +101,7 @@ def main():
         shutil.copy2(ROOT / 'docs' / (name + '.md'), destination / 'docs' / (name + '.md'))
     for name in ('annotation-boundary', 'all-heldout-comparison', 'cell-consensus', 'stardist-hybrid', 'signal-first'):
         shutil.copytree(ROOT / 'reports' / name, destination / 'reports' / name)
+    shutil.copytree(ROOT / 'reports/consensus-correct-channels', destination / 'reports/consensus-correct-channels')
     provenance = {}
     model_sources = [('cells', ROOT / 'models/cells'), ('cells-conservative', ROOT / 'models/cells-conservative'),
                      ('signals', ROOT / 'models/signals')]

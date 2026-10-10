@@ -1,43 +1,49 @@
-# FISH Analysis v0.7.2
+# FISH Analysis v0.7.3
 
-Both-detector consensus is the default: sensitive StarDist proposals are redrawn
-with the surface-loss contour model and retained when the center/box detector
-agrees. The signal-center 3D U-Net remains the signal model. Existing presets and
-checkpoints are included; no model was retrained for this release.
+Contour editing now shows only the current slice's border points. Select a
+contour and drag its dots directly; the grab area is 24 screen pixels across
+at every zoom level, with overlapping targets choosing the nearest dot.
+Connected border lines follow the dot during dragging. Editing a 3D slice
+makes its intersections explicit mesh vertices so moving one point keeps the
+other points on that slice fixed. Ctrl+Z restores the entire edit, and edited
+volumes, signal-to-border distances and exported geometry remain synchronized.
 
-- Open annotated or unannotated IMS images and IMX scenes. Read embedded XML and recognized HDF5 spot/mesh arrays, preserve imported objects alongside new detections, and replace stale embedded scenes during export.
-- Separate Manual and Program annotation groups with visibility controls. Edited imported objects become Program annotations.
-- Select/delete cells or signals; add, move and remove contour points or signal centers in 2D. Ctrl+Z restores edits and deletions. Edits and undo histories survive switching scans within the session.
-- Recalculate edited cell volumes and nearest-border B points/distances. Preserve original manual A–B measurements until the associated geometry is edited.
-- Export the latest annotations as a new IMS/IMX pair. Excel now has one Measurements sheet containing volumes, channels and signal distances.
-- Smooth 3D display surfaces without changing measured/exported geometry. Put channel-role settings beside the analysis controls.
-- Windows setup automatically downloads Microsoft's signed x64 Visual C++ runtime and installs it before TensorFlow. Run setup-analysis.bat after updating; setup needs internet access and may request administrator approval or a restart. The installer binary itself is obtained directly from Microsoft.
+All existing models and presets are bundled. Both-detector consensus remains
+the default, with the signal-center 3D U-Net. No model weights were changed.
 
-Edited exports also preserve exact signal-to-cell associations and cleared detection scores on reopening; stale sidecars are ignored if the scene changes.
+## Updated model metrics
 
-## Existing model metrics
+All **144 held-out scans** were evaluated using explicit membrane channels,
+including **58 corrected channel assignments**, and the current app's
+**0.72 roundness gate**. Unchanged-channel cell runs were reused only after
+checking model hashes and input fingerprints; signal inference, filtering and
+measurements were rerun on every scan.
 
-The prior all-held-out comparison processed all 71 test scans and 73 validation
-scans. Its consensus test results were **1,029 retained cells**, **174/508 complete
-manual cell matches**, **8.95% volume MAPE** (174 matched cells), and **0.129 µm
-distance MAE** (137 matched signals). Across all 144 held-out scans, consensus had
-**7.88% volume MAPE** (463 matches) and **0.126 µm distance MAE** (375 matches).
-These are historical measurements with the benchmark's saved settings, before
-the current GUI roundness/channel-role defaults; they are not a new accuracy
-estimate for v0.7.2. Different matched subsets and incomplete manual annotations
-limit comparisons and do not establish detection precision. All outliers were
-included. See the bundled `reports/all-heldout-comparison/` for details.
+| Split | Scans | Matched cells / signals | Volume MAPE | Distance MAE | Distance RMSE |
+|---|---:|---:|---:|---:|---:|
+| Test | 71 | 299 / 270 | 8.59% | 0.130 µm | 0.178 µm |
+| Validation | 73 | 359 / 332 | 5.95% | 0.118 µm | 0.160 µm |
+| All held-out | 144 | 658 / 602 | 7.15% | 0.123 µm | 0.168 µm |
 
-## Validation and compatibility
+Comparisons use matched complete manual cells and matched same-channel signals
+with actual manual A–B measurements. All outliers are included. Test volumes
+remain 7.86% too small on average, and distances average 0.077 µm too short.
+Acquisition-bootstrap 95% intervals: test volume MAPE 5.67–11.80%; distance
+MAE 0.109–0.146 µm. Sparse annotations do not establish detection precision;
+validation guided model selection and the historical test fold was inspected
+in prior experiments. Reports, individual measurement pairs, channel assignments
+and the reproducible benchmark are included under
+`reports/consensus-correct-channels/` and `scripts/benchmark_consensus_channels.py`.
 
-237 regression tests passed (7 skipped); model loading and direct signal controls also passed on CPU.
-Regression coverage includes imported/embedded annotations, source pixel
-preservation, point edits, mesh topology, deletion, undo, provenance and latest
-geometry exports. Real FISH annotations were exported/reloaded, and the consensus
-pipeline and native Linux 2D/3D interface were exercised. Windows runtime setup is
-checked by the Windows release build. Opening the edited files in a licensed
-Imaris installation has not been tested here. Unknown proprietary scene layouts
-are reported and blocked from export rather than silently discarded.
+## Distribution and verification
+
+This release uses the existing Linux/Windows source-and-model ZIP bundles.
+Run the included setup script with Python 3.12. The next workflow change adds
+standalone Windows EXE and Linux AppImage builds; these are not assets of v0.7.3.
+Windows setup installs Microsoft's signed Visual C++ runtime before TensorFlow.
+
+Contour dragging, fixed neighbor positions, live line updates, repeated edits,
+mesh closure, undo, edited export/reload, and the real Linux GUI were verified.
 
 ## Attribution
 
