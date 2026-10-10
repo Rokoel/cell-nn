@@ -12,6 +12,7 @@ from ..models import LibraryEntry
 from ..reader import entry_for_path, load_dataset, scan_library
 from ..signals.overlays import read_signals
 from ..views import SliceView, VolumeView
+from ..runtime_profile import configure_device_selector
 from .controller import AnalysisController, default_models, default_refinement_model, default_proposal_model, migrate_bundled_defaults, sensitive_stardist_model, STAGES
 
 
@@ -155,8 +156,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         row = QtWidgets.QHBoxLayout(); row.addWidget(self.roundness, 1); row.addWidget(self.roundness_value)
         form.addRow('Minimum roundness', row)
         self.device = QtWidgets.QComboBox()
-        self.device.addItems(['auto', 'cpu', 'gpu'])
-        self.device.setCurrentText(self.settings.value('device', 'auto'))
+        configure_device_selector(self.device, self.settings.value('device', 'auto'))
         form.addRow('Device', self.device)
         left.addWidget(self.options)
         self.options.hide()
@@ -487,7 +487,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
             self.settings.setValue(key, widget.text())
         self.settings.setValue('pipeline', self.pipeline.currentData())
         self.settings.setValue('minimum_roundness_percent', self.roundness.value())
-        self.settings.setValue('device', self.device.currentText())
+        self.settings.setValue('device', self.device.currentData())
         self.settings.setValue('membrane_snap', self.membrane_snap.isChecked())
         self.settings.setValue('learned_boundary', self.learned_boundary.isChecked())
         self.settings.setValue('membrane_shift_um', self.membrane_shift.value())
@@ -541,7 +541,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         try:
             roles=self.channel_roles.get(str(Path(self.active_image).resolve()),{})
             self.controller.start(self.active_image, self.output.text(), self.cell_model.text(),
-                                  self.signal_model.text(), self.device.currentText(), self.boundary_model.text().strip() or None,
+                                  self.signal_model.text(), self.device.currentData(), self.boundary_model.text().strip() or None,
                                   membrane_snap=dict(max_shift_um=self.membrane_shift.value()) if self.membrane_snap.isChecked() or self.learned_boundary.isChecked() else None,
                                   boundary_guidance=self.learned_boundary_model if self.learned_boundary.isChecked() else None,
                                   recovery={} if self.cell_recovery.isChecked() else None,

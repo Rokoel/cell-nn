@@ -1,18 +1,21 @@
-# FISH Analysis v0.8.0
+# FISH Analysis v0.8.1
 
-This release provides a **single Windows EXE** and **single Linux AppImage**.
-The GUI, current models, Python, Qt/VTK and CPU TensorFlow/PyTorch are bundled;
-no Python installation or first-run dependency download is needed. Both-detector
-consensus and the signal-center 3D U-Net remain the defaults. Windows includes
-app-local Microsoft C++ runtime DLLs to prevent the reported TensorFlow DLL
-initialization failure. Linux builds target Ubuntu 22.04+ (glibc 2.35+), with
-an extract-and-run option for systems without FUSE.
+The Linux AppImage now bundles CUDA libraries for **both TensorFlow cell
+contouring and PyTorch signal detection**. Choose auto/CPU/GPU under Pipeline
+and settings. Auto uses an available NVIDIA GPU and otherwise runs on CPU.
+A compatible host NVIDIA driver is required; Python and a separate CUDA toolkit
+are not required. The Windows EXE retains CPU inference and bundled Microsoft
+C++ runtime DLLs. CPU packages no longer expose an unsupported GPU option or
+restore an incompatible saved GPU selection.
 
-GitHub Actions builds both formats automatically. Before publishing, each actual
-executable must load and verify the checkpoints, pass direct-signal controls,
-run the complete consensus pipeline on synthetic Imaris data, and round-trip
-non-empty contours, A/B distances and the single-sheet Excel export from outside
-the checkout. Model weights and evaluation results are unchanged from v0.7.3.
+The AppImage uses stronger compression to fit the larger GPU runtime into a
+single GitHub release asset. `--check-runtime --device gpu` verifies a TensorFlow
+3D convolution and the default signal-center U-Net on CUDA in separate workers.
+GitHub Actions builds both platforms automatically and checks installed inference,
+model checkpoints, Imaris export and the single-sheet Excel export on CPU.
+GPU execution is checked separately on a machine with an NVIDIA GPU.
+
+The models, default both-detector consensus pipeline and metrics are unchanged.
 
 Contour editing now shows only the current slice's border points. Select a
 contour and drag its dots directly; the grab area is 24 screen pixels across

@@ -4,6 +4,7 @@ import multiprocessing
 import os
 import runpy
 import sys
+import subprocess
 from pathlib import Path
 
 WORKERS = frozenset(
@@ -19,6 +20,7 @@ WORKERS = frozenset(
         "fish_viewer.spots",
         "fish_viewer.analysis.shape",
         "fish_viewer.workflow",
+        "fish_viewer.runtime_check",
     }
 )
 
@@ -41,6 +43,11 @@ def hide_owned_console():
 def main():
     multiprocessing.freeze_support()
     arguments = sys.argv[1:]
+    if arguments[:1] == ['--check-runtime']:
+        for engine in ('tensorflow', 'torch'):
+            subprocess.run([sys.executable, '-m', 'fish_viewer.runtime_check',
+                            '--engine', engine, *arguments[1:]], check=True)
+        return 0
     if arguments[:1] == ["-m"]:
         if len(arguments) < 2 or arguments[1] not in WORKERS:
             raise SystemExit("Unsupported FISH worker module.")

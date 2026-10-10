@@ -11,6 +11,7 @@ from pathlib import Path
 def main(arguments=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument('--device', choices=['cpu', 'gpu', 'auto'], default='cpu')
     args = parser.parse_args(arguments)
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -86,7 +87,7 @@ def main(arguments=None):
             output / "pipeline",
             cells,
             signals,
-            device="cpu",
+            device=args.device,
             refinement=default_refinement_model(),
             stardist_proposals=True,
             consensus_model=default_proposal_model(),

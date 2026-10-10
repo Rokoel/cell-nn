@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Version label (must match pyproject.toml, e.g. v0.8.0)
+        description: Version label (must match pyproject.toml, e.g. v0.8.1)
         required: true
         type: string
       ref:
@@ -58,6 +58,9 @@ jobs:
       - name: Install Linux graphics libraries
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libegl1 libopengl0 libgl1 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxkbcommon-x11-0 xvfb
+      - name: Make room for bundled Linux CUDA libraries
+        if: runner.os == 'Linux'
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
       - name: Install bundled CPU PyTorch runtime
         run: python -m pip install torch==2.9.1 torchvision==0.24.1 --index-url https://download.pytorch.org/whl/cpu
       - name: Install application, inference and build dependencies
@@ -100,7 +103,15 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
           RELEASE_PLATFORM: ${{ matrix.platform }}
         shell: bash
-        run: python scripts/build_standalone.py --bundle "dist/FISH-Analysis-${RELEASE_TAG}-${RELEASE_PLATFORM}" --tag "$RELEASE_TAG"
+        run: |
+          set -euo pipefail
+          cuda_args=()
+          if [ "$RUNNER_OS" = Linux ]; then
+            python -m pip install --no-cache-dir -r requirements-cuda-bundle.txt
+            python -m pip install --no-cache-dir --no-deps torch==2.9.1 torchvision==0.24.1 --index-url https://download.pytorch.org/whl/cu128
+            cuda_args=(--cuda)
+          fi
+          python scripts/build_standalone.py --bundle "dist/FISH-Analysis-${RELEASE_TAG}-${RELEASE_PLATFORM}" --tag "$RELEASE_TAG" "${cuda_args[@]}"
       - name: Test installed executable outside the checkout
         env:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
@@ -115,8 +126,16 @@ jobs:
               env.pop(key, None)
           env['APPIMAGE_EXTRACT_AND_RUN'] = '1'
           with tempfile.TemporaryDirectory(prefix='fish-installed-') as clean:
+              subprocess.run([str(binary), '--check-runtime', '--device', 'cpu'], cwd=clean, env=env, check=True, timeout=900)
               subprocess.run([str(binary), '--verify-models', '--require-latest-models', '--with-direct-signals'], cwd=clean, env=env, check=True, timeout=900)
               subprocess.run([str(binary), '--self-test', '--output', str(pathlib.Path(clean)/'smoke')], cwd=clean, env=env, check=True, timeout=900)
+          # GitHub-hosted runners have no NVIDIA GPU; assert CUDA was compiled
+          # and the libraries are present. GPU execution is verified separately.
+          if os.name != 'nt':
+              import torch, importlib.metadata
+              assert torch.version.cuda is not None
+              assert importlib.metadata.version('nvidia-cudnn-cu12')
+              assert binary.stat().st_size < 2 * 1024**3, 'GitHub release asset exceeds 2 GiB'
       - uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.platform }}

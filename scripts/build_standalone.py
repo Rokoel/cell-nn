@@ -56,21 +56,29 @@ def main():
     parser.add_argument("--tag", required=True)
     parser.add_argument("--output", type=Path, default=ROOT / "dist")
     parser.add_argument("--appimagetool", type=Path)
+    parser.add_argument("--cuda", action="store_true", help="Bundle Linux CUDA libraries for TensorFlow and PyTorch")
     args = parser.parse_args()
     bundle = args.bundle.resolve()
     if not (bundle / "models/origins.json").is_file():
         parser.error("First create and verify the source/model bundle.")
     if sys.platform not in ("win32", "linux"):
         parser.error("Build on Windows x64 or Linux x64.")
+    if args.cuda and sys.platform != 'linux':
+        parser.error('CUDA packaging is supported on Linux only.')
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     work = ROOT / "build/standalone"
     frozen = work / "dist"
+    work.mkdir(parents=True, exist_ok=True)
+    profile = work / 'runtime-profile.json'
+    profile.write_text(json.dumps({'cuda': args.cuda}), encoding='utf-8')
     env = dict(
         os.environ,
         FISH_SOURCE_BUNDLE=str(bundle),
         QT_API="pyside6",
         CUDA_VISIBLE_DEVICES="-1",
+        FISH_RUNTIME_PROFILE=str(profile),
+        FISH_BUNDLE_CUDA='1' if args.cuda else '0',
     )
     if os.name == "nt":
         env["FISH_WINDOWS_CRT"] = str(windows_crt())
@@ -146,6 +154,8 @@ def main():
                 str(tool),
                 "--appimage-extract-and-run",
                 "--no-appstream",
+                '--comp', 'xz' if args.cuda else 'zstd',
+                '--mksquashfs-opt', '-processors', '--mksquashfs-opt', '2',
                 "--runtime-file",
                 str(runtime),
                 str(appdir),
@@ -164,6 +174,7 @@ def main():
             {
                 "platform": sys.platform,
                 "python": sys.version,
+                "cuda": args.cuda,
                 "versions": versions,
                 "models": json.loads((bundle / "models/origins.json").read_text()),
             },

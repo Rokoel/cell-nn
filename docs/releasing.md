@@ -6,7 +6,7 @@ No FISH scans or local training caches are required or distributed.
 
 The release contains `FISH-Analysis-v<version>-windows-x64.exe` and
 `FISH-Analysis-v<version>-linux-x64.AppImage`. Each file contains the GUI,
-Python, Qt/VTK, CPU TensorFlow/PyTorch runtimes, Imaris export templates and
+Python, Qt/VTK, TensorFlow/PyTorch runtimes, Imaris export templates and
 all current analysis preset models. Both-detector consensus and the signal-center
 3D U-Net remain the defaults. There is no first-run dependency download.
 Windows includes the Visual Studio x64 redistributable DLLs app-locally, including
@@ -28,9 +28,20 @@ Linux still needs a working desktop/OpenGL driver. If FUSE is unavailable, use
 `APPIMAGE_EXTRACT_AND_RUN=1 ./FISH-Analysis-v<version>-linux-x64.AppImage`.
 The Windows single-file application extracts its bundled libraries to a temporary
 folder on launch, so the first startup can take longer. Both formats need free
-space for their bundled libraries and analysis outputs. These packages use CPU
-inference; source installations still support the existing optional Linux GPU
-setup. Results and settings are saved outside the executable.
+space for their bundled libraries and analysis outputs. The Linux AppImage bundles
+CUDA 12 libraries for both neural backends and supports auto/CPU/GPU inference.
+A compatible NVIDIA driver must be installed on the host; no separate CUDA toolkit
+or Python installation is needed. Windows uses CPU inference and does not offer
+an unsupported GPU choice. Results and settings are saved outside the executable.
+
+To check actual GPU execution in both bundled backends:
+
+```sh
+./FISH-Analysis-v<version>-linux-x64.AppImage --check-runtime --device gpu
+```
+
+This executes a TensorFlow 3D convolution and the bundled signal-center U-Net in
+separate processes and fails if GPU mode cannot be used. `--device cpu` checks CPU mode.
 
 ## Building and publishing
 
@@ -56,7 +67,12 @@ select that tag as the ref. Only the publish job has `contents: write`.
 
 Local builds require Python 3.12, the application neural dependencies,
 `requirements-spots.txt`, `requirements-build.txt`, CPU torch 2.9.1 and torchvision
-0.24.1. Windows also requires Visual Studio C++ tools with its x64 redistributable
+0.24.1. For Linux CUDA packaging, then install `requirements-cuda-bundle.txt` and
+replace torch/torchvision with the cu128 wheels using `--no-deps` as shown in the
+workflow. Pass `--cuda` to `build_standalone.py`. The shared CUDA versions are
+pinned: Torch’s exact NCCL dependency conflicts with TensorFlow’s minimum, so
+compatibility is checked with actual worker inference rather than pip metadata.
+Windows also requires Visual Studio C++ tools with its x64 redistributable
 folder. Linux requires the Qt xcb/OpenGL development-host runtime libraries listed
 in the workflow. Run `scripts/package_analysis.py --output <new-directory>`, verify
 that directory using `scripts/verify_release.py --require-latest-models

@@ -9,7 +9,10 @@ the Viewer/Annotator tools; Analysis has no training buttons or model pickers.
 
 ## Installation
 
-The standalone EXE/AppImage includes Python, CPU neural runtimes and models.
+The standalone EXE/AppImage includes Python, neural runtimes and models.
+The Linux AppImage bundles CUDA libraries for cell and signal models; the Windows EXE uses CPU.
+Choose **auto**, **cpu** or **gpu** under **Pipeline and settings → Device** on Linux.
+Auto uses an available NVIDIA GPU and otherwise runs on CPU. A compatible system NVIDIA driver is required for GPU use.
 Double-click the EXE on Windows 10/11 x64. On Linux x64 (Ubuntu 22.04+), make the
 AppImage executable and launch it. If FUSE is unavailable, launch with
 `APPIMAGE_EXTRACT_AND_RUN=1 ./FISH-Analysis-v<version>-linux-x64.AppImage`.

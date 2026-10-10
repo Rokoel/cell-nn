@@ -7,6 +7,7 @@ root = Path(SPECPATH).parent
 bundle = Path(os.environ['FISH_SOURCE_BUNDLE'])
 datas = [(str(bundle / name), name) for name in ('models', 'docs', 'reports')]
 datas += [(str(root / 'scripts/verify_release.py'), 'scripts')]
+datas += [(os.environ['FISH_RUNTIME_PROFILE'], '.')]
 datas += collect_data_files('fish_viewer')
 # Lazy imports in both neural libraries need distribution metadata at runtime.
 for package in ('stardist', 'csbdeep', 'tensorflow', 'keras', 'numpy', 'scipy',
@@ -18,6 +19,23 @@ hidden += collect_submodules('spotiflow')
 hidden += ['matplotlib.backends.backend_svg', 'matplotlib.backends.backend_pdf',
            'matplotlib.backends.backend_agg', 'matplotlib.backends.backend_qtagg']
 binaries = []
+if os.environ.get('FISH_BUNDLE_CUDA') == '1':
+    import importlib.metadata
+    # Explicitly preserve pip's CUDA layout, including ptxas and libdevice.
+    # No host driver (libcuda.so) is bundled; the system supplies it.
+    seen = set()
+    for distribution in importlib.metadata.distributions():
+        name = distribution.metadata['Name']
+        if not name.startswith('nvidia-') or name in seen:
+            continue
+        seen.add(name)
+        for relative in distribution.files or []:
+            if relative.parts[0] != 'nvidia' or not any(part in ('lib', 'bin', 'nvvm') for part in relative.parts):
+                continue
+            source = distribution.locate_file(relative)
+            if source.is_file():
+                target = str(relative.parent)
+                (binaries if '.so' in source.name or 'bin' in relative.parts else datas).append((str(source), target))
 if os.name == 'nt':
     crt = Path(os.environ['FISH_WINDOWS_CRT'])
     binaries += [(str(p), '.') for p in crt.glob('*.dll')]
