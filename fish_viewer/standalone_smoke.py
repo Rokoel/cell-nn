@@ -68,9 +68,14 @@ def main(arguments=None):
     settings = QtCore.QSettings(
         str(output / "settings.ini"), QtCore.QSettings.Format.IniFormat
     )
+    settings.setValue('device', 'gpu')
     window = AnalysisWindow(settings=settings)
     try:
         assert window.pipeline.currentData() == "consensus"
+        from .runtime_profile import packaged_profile
+        profile = packaged_profile()
+        if profile is not None:
+            assert window.device.currentData() == ('gpu' if profile['cuda'] else 'cpu')
         cells, signals = default_models()
         done, errors = [], []
         # The controller is driven directly here; its GUI queue callbacks expect
