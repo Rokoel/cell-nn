@@ -14,6 +14,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APPIMAGE_URL = "https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage"
 APPIMAGE_SHA256 = "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"
+RUNTIME_URL = "https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64"
+RUNTIME_SHA256 = "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"
 
 
 def windows_crt():
@@ -130,12 +132,22 @@ def main():
                 "AppImage build tool checksum differs from the pinned release."
             )
         tool.chmod(0o755)
+        runtime = work / "runtime-x86_64"
+        if not runtime.exists():
+            urllib.request.urlretrieve(RUNTIME_URL, runtime)
+        with runtime.open("rb") as stream:
+            if hashlib.file_digest(stream, "sha256").hexdigest() != RUNTIME_SHA256:
+                raise RuntimeError(
+                    "AppImage runtime checksum differs from the pinned release."
+                )
         target = output / f"FISH-Analysis-{args.tag}-linux-x64.AppImage"
         subprocess.run(
             [
                 str(tool),
                 "--appimage-extract-and-run",
                 "--no-appstream",
+                "--runtime-file",
+                str(runtime),
                 str(appdir),
                 str(target),
             ],

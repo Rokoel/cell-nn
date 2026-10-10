@@ -15,6 +15,8 @@ for package in ('stardist', 'csbdeep', 'tensorflow', 'keras', 'numpy', 'scipy',
 hidden = collect_submodules('fish_viewer')
 hidden += collect_submodules('stardist') + collect_submodules('csbdeep')
 hidden += collect_submodules('spotiflow')
+hidden += ['matplotlib.backends.backend_svg', 'matplotlib.backends.backend_pdf',
+           'matplotlib.backends.backend_agg', 'matplotlib.backends.backend_qtagg']
 binaries = []
 if os.name == 'nt':
     crt = Path(os.environ['FISH_WINDOWS_CRT'])
@@ -33,7 +35,7 @@ else:
 a = Analysis([str(root / 'packaging/entry.py')], pathex=[str(root)],
              binaries=binaries, datas=datas, hiddenimports=hidden,
              excludes=['PyQt5', 'PyQt6', 'PySide2', 'tkinter', 'IPython', 'pytest',
-                       'jax', 'jaxlib', 'nvidia', 'tensorboard', 'wandb'],
+                       'jax', 'jaxlib', 'nvidia', 'tensorboard'],
              noarchive=False)
 pyz = PYZ(a.pure)
 # torch JIT and TensorFlow need source files; their maintained hooks collect them.

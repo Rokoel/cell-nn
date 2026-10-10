@@ -32,6 +32,8 @@ def hide_owned_console():
 
     ids = (ctypes.c_ulong * 2)()
     kernel = ctypes.windll.kernel32
+    kernel.GetConsoleWindow.restype = ctypes.c_void_p
+    ctypes.windll.user32.ShowWindow.argtypes = [ctypes.c_void_p, ctypes.c_int]
     if kernel.GetConsoleProcessList(ids, 2) == 1:
         ctypes.windll.user32.ShowWindow(kernel.GetConsoleWindow(), 0)
 
