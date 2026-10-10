@@ -1,4 +1,4 @@
-# FISH Analysis v0.7.0
+# FISH Analysis v0.7.1
 
 Both-detector consensus is the default: sensitive StarDist proposals are redrawn
 with the surface-loss contour model and retained when the center/box detector
@@ -22,13 +22,13 @@ distance MAE** (137 matched signals). Across all 144 held-out scans, consensus h
 **7.88% volume MAPE** (463 matches) and **0.126 µm distance MAE** (375 matches).
 These are historical measurements with the benchmark's saved settings, before
 the current GUI roundness/channel-role defaults; they are not a new accuracy
-estimate for v0.7.0. Different matched subsets and incomplete manual annotations
+estimate for v0.7.1. Different matched subsets and incomplete manual annotations
 limit comparisons and do not establish detection precision. All outliers were
 included. See the bundled `reports/all-heldout-comparison/` for details.
 
 ## Validation and compatibility
 
-233 regression tests passed (7 skipped); model loading and direct signal controls also passed on CPU.
+235 regression tests passed (7 skipped); model loading and direct signal controls also passed on CPU.
 Regression coverage includes imported/embedded annotations, source pixel
 preservation, point edits, mesh topology, deletion, undo, provenance and latest
 geometry exports. Real FISH annotations were exported/reloaded, and the consensus

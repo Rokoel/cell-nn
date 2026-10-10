@@ -274,6 +274,7 @@ def test_edits_and_undo_survive_switching_scans(qapp, ims_file, tmp_path):
         other = deepcopy(doc.dataset)
         other.metadata.path = tmp_path / "other.ims"
         window.set_dataset(other, None)
+        assert window.documents[str(ims_file)].dataset.volumes == []
         window.set_dataset(load_dataset(entry_for_path(ims_file)), None)
         assert not window.dataset.scene.surfaces
         window.editor.document.undo.undo()
@@ -283,7 +284,9 @@ def test_edits_and_undo_survive_switching_scans(qapp, ims_file, tmp_path):
 
 
 def test_pipeline_export_preserves_embedded_manual_and_new_detections(
-    qapp, signal_result, tmp_path  # noqa: F811 - imported pytest fixture
+    qapp,
+    signal_result,  # noqa: F811 - imported pytest fixture
+    tmp_path,
 ):
     from fish_viewer.workflow.results import filter_result
     from fish_viewer.workflow.distances import measure_result
@@ -323,3 +326,31 @@ def test_pipeline_export_preserves_embedded_manual_and_new_detections(
     assert sum(m.source == "manual" for m in reopened.scene.measurements) == 1
     assert sum(m.source != "manual" for m in reopened.scene.measurements) == 2
     assert not reopened.scene.warnings
+
+
+def test_deleting_cell_does_not_change_unassociated_manual_ab(qapp, ims_file):
+    doc = document(ims_file)
+    orphan = Measurement(
+        "outside manually measured pair",
+        np.array([[100, 100, 100], [100, 100, 101]], float),
+        ["A", "B"],
+        [0, 0],
+        [(0, 1)],
+    )
+    doc.dataset.scene.measurements.append(orphan)
+    doc = AnnotationDocument(doc.dataset)
+    assert doc.bindings[1] is None and doc.distances[1] == pytest.approx(1)
+    doc.delete("surface", 0)
+    assert doc.dataset.scene.measurements[0].labels == ["A"]
+    assert doc.dataset.scene.measurements[1].labels == ["A", "B"]
+    assert doc.distances[1] == pytest.approx(1)
+
+
+def test_unsupported_annotations_cannot_be_silently_discarded(qapp, ims_file, tmp_path):
+    doc = document(ims_file)
+    doc.dataset.scene.warnings = [
+        "bpSpots annotations are not supported by this XML reader."
+    ]
+    with pytest.raises(ValueError, match="cannot safely discard"):
+        export_document(doc, tmp_path / "unsafe.ims")
+    assert not (tmp_path / "unsafe.ims").exists()

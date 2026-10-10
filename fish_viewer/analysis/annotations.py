@@ -193,6 +193,7 @@ class AnnotationDocument:
     def delete(self, kind, index):
         def change():
             if kind == "surface":
+                detached = {i for i, c in self.bindings.items() if c == index}
                 self.dataset.scene.surfaces.pop(index)
                 self.bindings = {
                     i: None
@@ -204,7 +205,7 @@ class AnnotationDocument:
                 }
                 # Keep signal centers; discard their obsolete border endpoints.
                 for i, m in enumerate(self.dataset.scene.measurements):
-                    if self.bindings.get(i) is None:
+                    if i in detached:
                         a = self.signal_index(m)
                         if a is not None:
                             m.points = m.points[[a]]

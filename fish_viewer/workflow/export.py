@@ -100,7 +100,7 @@ def export_result(report_path, target, emit=lambda event: None, cancel=None, sou
         combined=deepcopy(original_scene)
         combined.surfaces.extend(generated.surfaces)
         combined.measurements.extend(generated.measurements)
-    if original_scene.warnings and any('Unsupported' in w or 'Cannot read' in w for w in original_scene.warnings):
+    if original_scene.warnings and any('unsupported' in w.lower() or 'not supported' in w.lower() or 'cannot read' in w.lower() for w in original_scene.warnings):
         raise ValueError('Some imported annotations could not be read; export cannot safely discard them: '+'; '.join(original_scene.warnings))
     with tempfile.TemporaryDirectory(prefix='.fish-export-', dir=target.parent) as temporary:
         staging = Path(temporary)

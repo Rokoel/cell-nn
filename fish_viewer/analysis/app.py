@@ -416,6 +416,9 @@ class AnalysisWindow(QtWidgets.QMainWindow):
             add_cell_volumes(report, dataset.scene.surfaces)
         if self.editor.document is not None and self.dataset is not None:
             self.documents[str(self.dataset.metadata.path)] = self.editor.document
+            from dataclasses import replace
+            # Keep annotations/undo, not every full scan volume in memory.
+            self.editor.document.dataset = replace(self.dataset, volumes=[])
         cached=self.documents.get(str(dataset.metadata.path))
         if cached is not None:
             dataset.scene=cached.dataset.scene

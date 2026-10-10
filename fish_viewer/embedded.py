@@ -45,6 +45,9 @@ def content_scene(image, decode):
         if not isinstance(group, h5py.Group):
             return
         name = decode(group.attrs.get("Name", path.rsplit("/", 1)[-1]))
+        if re.match(r"Filaments?\d+$", path.rsplit("/", 1)[-1]):
+            scene.warnings.append(f"Unsupported embedded filament object: {path}")
+            return
         color = (0.75, 0.85, 0.95)
         if "Material" in group.attrs:
             try:
@@ -109,6 +112,10 @@ def content_scene(image, decode):
             nv = fields.get("numberofvertices")
             nt = fields.get("numberoftriangles")
             time_field = fields.get("timeindex")
+            if records is not None and not (nv and nt):
+                raise ValueError(
+                    "Unsupported SurfaceData object counts; cannot separate meshes safely."
+                )
             if nv and nt:
                 start_v = start_f = 0
                 for i, record in enumerate(records.reshape(-1)):

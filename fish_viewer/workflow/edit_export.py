@@ -129,7 +129,10 @@ def export_document(document, path):
     report = document.report()
     metadata = deepcopy(document.dataset.metadata)
     if any(
-        "unsupported" in w.lower() or "cannot read" in w.lower() for w in scene.warnings
+        "unsupported" in w.lower()
+        or "not supported" in w.lower()
+        or "cannot read" in w.lower()
+        for w in scene.warnings
     ):
         raise ValueError(
             "Some source annotations could not be read; export cannot safely discard them: "
