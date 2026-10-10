@@ -130,7 +130,9 @@ their centers but have no fabricated border distance. Deleting a cell keeps its
 signal centers and removes their stale B points and lines.
 
 **Export edited Imaris…** saves the latest geometry in a new `.ims`/`.imx` pair,
-plus the single-sheet Excel workbook and annotation report. Open the **`.imx`**
+plus the single-sheet Excel workbook and annotation report. Keep the annotation
+report beside the image/scene to preserve exact edited cell assignments when
+reopening. Manually moved centers have no stale neural detection score. Open the **`.imx`**
 in Imaris to load both the image and annotations. Originals are never overwritten;
 embedded stale scenes are removed from the exported image, while all image
 channels, time points and pyramid data are preserved. Unsupported annotation

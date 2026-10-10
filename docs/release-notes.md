@@ -1,4 +1,4 @@
-# FISH Analysis v0.7.1
+# FISH Analysis v0.7.2
 
 Both-detector consensus is the default: sensitive StarDist proposals are redrawn
 with the surface-loss contour model and retained when the center/box detector
@@ -13,6 +13,8 @@ checkpoints are included; no model was retrained for this release.
 - Smooth 3D display surfaces without changing measured/exported geometry. Put channel-role settings beside the analysis controls.
 - Windows setup automatically downloads Microsoft's signed x64 Visual C++ runtime and installs it before TensorFlow. Run setup-analysis.bat after updating; setup needs internet access and may request administrator approval or a restart. The installer binary itself is obtained directly from Microsoft.
 
+Edited exports also preserve exact signal-to-cell associations and cleared detection scores on reopening; stale sidecars are ignored if the scene changes.
+
 ## Existing model metrics
 
 The prior all-held-out comparison processed all 71 test scans and 73 validation
@@ -22,13 +24,13 @@ distance MAE** (137 matched signals). Across all 144 held-out scans, consensus h
 **7.88% volume MAPE** (463 matches) and **0.126 µm distance MAE** (375 matches).
 These are historical measurements with the benchmark's saved settings, before
 the current GUI roundness/channel-role defaults; they are not a new accuracy
-estimate for v0.7.1. Different matched subsets and incomplete manual annotations
+estimate for v0.7.2. Different matched subsets and incomplete manual annotations
 limit comparisons and do not establish detection precision. All outliers were
 included. See the bundled `reports/all-heldout-comparison/` for details.
 
 ## Validation and compatibility
 
-235 regression tests passed (7 skipped); model loading and direct signal controls also passed on CPU.
+237 regression tests passed (7 skipped); model loading and direct signal controls also passed on CPU.
 Regression coverage includes imported/embedded annotations, source pixel
 preservation, point edits, mesh topology, deletion, undo, provenance and latest
 geometry exports. Real FISH annotations were exported/reloaded, and the consensus

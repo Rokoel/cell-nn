@@ -354,3 +354,47 @@ def test_unsupported_annotations_cannot_be_silently_discarded(qapp, ims_file, tm
     with pytest.raises(ValueError, match="cannot safely discard"):
         export_document(doc, tmp_path / "unsafe.ims")
     assert not (tmp_path / "unsafe.ims").exists()
+
+
+def test_reopening_preserves_edited_signal_association_and_cleared_score(
+    qapp, ims_file, tmp_path
+):
+    doc = document(ims_file)
+    doc.dataset.scene.surfaces[0].name = "Predicted cell 1 - 1 signals"
+    second = deepcopy(doc.dataset.scene.surfaces[0])
+    second.name = "Predicted cell 2 - 0 signals"
+    second.vertices += [10, 0, 0]
+    doc.dataset.scene.surfaces.append(second)
+    doc.dataset.scene.measurements[
+        0
+    ].name = "Signal 1; cell 1; channel 2; score .99; distance 1 um"
+    doc.channels[0] = 1
+    doc.scores[0] = 0.99
+    doc.move("measurement", 0, 0, [24, 23, 31])
+    assert doc.bindings[0] == 1 and doc.scores[0] is None
+    assert "cell 2" in doc.dataset.scene.measurements[0].name
+    assert "score" not in doc.dataset.scene.measurements[0].name
+    exported = export_document(doc, tmp_path / "moved.ims")
+    reopened = AnnotationDocument(load_dataset(entry_for_path(exported)))
+    assert reopened.bindings[0] == 1 and reopened.scores[0] is None
+    assert reopened.distances[0] == pytest.approx(doc.distances[0])
+    reopened.move("measurement", 0, 0, [100, 100, 100])
+    exported = export_document(reopened, tmp_path / "outside.ims")
+    again = AnnotationDocument(load_dataset(entry_for_path(exported)))
+    assert again.bindings[0] is None and not again.distances
+    assert again.dataset.scene.measurements[0].labels == ["A"]
+
+
+def test_annotation_sidecar_is_ignored_if_scene_changed(qapp, ims_file, tmp_path):
+    import json
+
+    doc = document(ims_file)
+    exported = Path(export_document(doc, tmp_path / "saved.ims"))
+    sidecar = exported.with_suffix(".annotations.json")
+    data = json.loads(sidecar.read_text())
+    data["editor_state"]["bindings"] = {"0": None}
+    sidecar.write_text(json.dumps(data))
+    scene = exported.with_suffix(".imx")
+    scene.write_bytes(scene.read_bytes() + b"\n")
+    reopened = AnnotationDocument(load_dataset(entry_for_path(exported)))
+    assert reopened.bindings[0] == 0

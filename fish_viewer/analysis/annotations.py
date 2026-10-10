@@ -1,6 +1,8 @@
 """Editable calibrated annotations, independent of inference's immutable voxel archives."""
 
 from copy import deepcopy
+import hashlib
+import json
 import re
 import numpy as np
 import pyvista as pv
@@ -96,6 +98,48 @@ class AnnotationDocument:
             row = next((p for p in manual_points if p.get("signal_id") == m.name), None)
             if row is not None and self.channels[i] is None:
                 self.channels[i] = row.get("channel")
+        # Exact associations from this app's export override name heuristics.
+        sidecar = dataset.metadata.path.with_suffix(".annotations.json")
+        if (
+            sidecar.is_file()
+            and dataset.scene.source
+            and dataset.scene.source.suffix.lower() == ".imx"
+        ):
+            try:
+                state = json.loads(sidecar.read_text(encoding="utf-8")).get(
+                    "editor_state", {}
+                )
+                digest = hashlib.sha256(dataset.scene.source.read_bytes()).hexdigest()
+                n = len(dataset.scene.measurements)
+                bindings = {int(k): v for k, v in state.get("bindings", {}).items()}
+                channels = {int(k): v for k, v in state.get("channels", {}).items()}
+                scores = {int(k): v for k, v in state.get("scores", {}).items()}
+                valid = (
+                    state.get("scene_sha256") == digest
+                    and set(bindings) == set(channels) == set(scores) == set(range(n))
+                    and all(
+                        v is None or type(v) is int and 0 <= v < len(surfaces)
+                        for v in bindings.values()
+                    )
+                    and all(
+                        v is None
+                        or type(v) is int
+                        and 0 <= v < len(dataset.metadata.channels)
+                        for v in channels.values()
+                    )
+                    and all(
+                        v is None or isinstance(v, (int, float)) and np.isfinite(v)
+                        for v in scores.values()
+                    )
+                )
+                if valid:
+                    self.bindings, self.channels, self.scores = (
+                        bindings,
+                        channels,
+                        scores,
+                    )
+            except (OSError, ValueError, TypeError, AttributeError):
+                pass
         self.recalculate()
 
     @staticmethod
@@ -189,6 +233,10 @@ class AnnotationDocument:
                 m.points[b] = border
             m.edges = [(a, b)]
             self.distances[i] = distance
+            if origin(m) == "Program":
+                m.name = re.sub(
+                    r"; distance [\d.eE+-]+ um", f"; distance {distance:.6g} um", m.name
+                )
 
     def delete(self, kind, index):
         def change():
@@ -251,6 +299,7 @@ class AnnotationDocument:
                         "B is calculated from A and the cell border. Edit A or the contour instead."
                     )
                 obj.points[vertex] = xyz
+                self.scores[index] = None
                 previous = self.bindings.get(index)
                 self.bindings[index] = (
                     self.containing(xyz, [previous]) if previous is not None else None
@@ -271,6 +320,21 @@ class AnnotationDocument:
                     obj.labels = ["A"]
                     obj.times = [obj.times[vertex]]
                     obj.edges = []
+                match = re.match(r"Signal (\d+);", obj.name)
+                if match:
+                    cell = self.bindings.get(index)
+                    label = f"Signal {match[1]}"
+                    if cell is not None:
+                        number = re.match(
+                            r"Predicted cell (\d+)",
+                            self.dataset.scene.surfaces[cell].name,
+                        )
+                        if number:
+                            label += f"; cell {number[1]}"
+                    channel = self.channels.get(index)
+                    if channel is not None:
+                        label += f"; channel {channel + 1}"
+                    obj.name = label + "; edited center"
 
         self.apply("Move point", change)
 

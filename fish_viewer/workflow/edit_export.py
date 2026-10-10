@@ -1,6 +1,7 @@
 """Export the live annotation document, including imported/manual geometry."""
 
 from copy import deepcopy
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -144,8 +145,13 @@ def export_document(document, path):
     ) as temporary:
         staging = Path(temporary)
         _copy_image(source, staging / target.name, lambda e: None, None)
-        (staging / target.with_suffix(".imx").name).write_bytes(
-            editable_scene_xml(target.name, scene, metadata)
+        scene_data = editable_scene_xml(target.name, scene, metadata)
+        (staging / target.with_suffix(".imx").name).write_bytes(scene_data)
+        report["editor_state"] = dict(
+            scene_sha256=hashlib.sha256(scene_data).hexdigest(),
+            bindings=document.bindings,
+            channels=document.channels,
+            scores=document.scores,
         )
         write_excel(staging / target.with_suffix(".xlsx").name, report)
         (staging / target.with_suffix(".annotations.json").name).write_text(
