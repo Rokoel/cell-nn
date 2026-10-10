@@ -21,9 +21,9 @@ STAGES = [('cells', 'Detecting cell contours'), ('signals', 'Finding signals ins
 
 def default_models():
     root = Path(__file__).resolve().parents[2]
-    cells, signals = root / 'models/cells', root / 'models/signals-center-unet'
+    cells, signals = root / 'models/cells-stardist2d', root / 'models/signals-center-unet'
     if not (cells / 'fish-model.json').exists():
-        cells = root / 'artifacts/balanced-fish/training/neural-train-20260918-151950-694838/model'
+        raise FileNotFoundError('The bundled fine-tuned StarDist2D model is missing.')
     if not (signals / 'signal-model.json').exists():
         signals = root / 'artifacts/signal-fish/training/signal-train-20260919-020312-268747/model'
     return cells, signals
@@ -54,26 +54,33 @@ def default_proposal_model():
 
 def migrate_bundled_defaults(settings):
     """Upgrade former bundled defaults once, preserving custom model choices."""
-    if settings.value('default_pipeline_version', '') == '0.4.1':
+    if settings.value('default_pipeline_version', '') == 'finetuned-stardist2d-1':
         return
     root = Path(__file__).resolve().parents[2]
-    for key, old, new in (
-        ('signal_model', root / 'models/signals', default_models()[1]),
-        ('cell_model', root / 'models/cells', default_proposal_model()),
-        ('boundary_model', root / 'models/refinement', default_refinement_model()),
-    ):
-        value = settings.value(key, '')
-        if value and new and Path(value).resolve() == old.resolve():
-            settings.setValue(key, str(new))
-            if key == 'cell_model' and not settings.value('boundary_model', ''):
-                settings.setValue('boundary_model', default_refinement_model())
-    settings.setValue('default_pipeline_version', '0.4.1')
+    if settings.value('pipeline', '') in ('', 'conservative'):
+        settings.setValue('pipeline', 'stardist2d')
+    value = settings.value('cell_model', '')
+    bundled = { (root / 'models' / name).resolve() for name in
+                ('cells', 'cells-sensitive', 'cells-conservative', 'cells-preprocessed', 'cells-stardist2d', 'proposals') }
+    if not value or Path(value).resolve() in bundled:
+        settings.setValue('cell_model', str(default_models()[0]))
+        settings.setValue('boundary_model', '')
+        for key in ('membrane_snap', 'learned_boundary', 'cell_recovery',
+                    'stardist_proposals', 'consensus_cells'):
+            settings.setValue(key, False)
+    value = settings.value('signal_model', '')
+    if value and Path(value).resolve() == (root / 'models/signals').resolve():
+        settings.setValue('signal_model', str(default_models()[1]))
+    settings.setValue('default_pipeline_version', 'finetuned-stardist2d-1')
 
 
 def check_models(cells, signals):
     if (Path(cells) / 'proposal-model.json').is_file():
         from ..proposals.config import read_model as read_proposal_model
         manifest = read_proposal_model(cells)
+    elif json.loads((Path(cells)/'fish-model.json').read_text()).get('engine') == 'stardist2d-slice':
+        from ..neural.slice_inference import read_model as read_slice_model
+        manifest=read_slice_model(cells)
     else:
         manifest = read_model(cells)
     from ..signals.model import read_model as read_signal_model
@@ -95,12 +102,31 @@ class AnalysisController(QtCore.QObject):
         self.stopping = False
         self.closing = False
 
-    def start(self, image, output, cells, signals, device='auto', refinement=None, membrane_snap=None, recovery=None, stardist_proposals=False, consensus_model=None, boundary_guidance=None):
+    def start(self, image, output, cells, signals, device='auto', refinement=None, membrane_snap=None, recovery=None, stardist_proposals=False, consensus_model=None, boundary_guidance=None, roundness=None, signal_first=False, cell_channel=None, signal_channels=None):
         if self.busy:
             raise ValueError('A scan is already being processed.')
         manifest = check_models(cells, signals)
+        if cell_channel is not None and (type(cell_channel) is not int or cell_channel<0):
+            raise ValueError('Cell channel must be a nonnegative channel index.')
+        if signal_channels is not None and (not signal_channels or any(type(i) is not int or i<0 for i in signal_channels) or len(set(signal_channels)) != len(signal_channels)):
+            raise ValueError('Select one or more distinct signal channel indices.')
+        if cell_channel is not None and signal_channels is not None and cell_channel in signal_channels:
+            raise ValueError('Cell and signal channels must be different.')
+        self.cell_channel=cell_channel
+        self.signal_channels=list(signal_channels) if signal_channels is not None else None
+        self.cell_channel_arguments=['--cell-channel',str(cell_channel)] if cell_channel is not None else []
+        self.signal_channel_arguments=['--signal-channels',*[str(i) for i in signal_channels]] if signal_channels is not None else []
         self.refinement_model = str(Path(refinement).expanduser().resolve()) if refinement else None
         self.center_box_detector = manifest.get('engine') == 'cell-center-box3d'
+        self.signal_first = bool(signal_first)
+        self.roundness = float(roundness) if roundness is not None else None
+        if self.roundness is not None and not 0 <= self.roundness <= 1:
+            raise ValueError('Minimum roundness must lie between 0 and 1.')
+        if self.signal_first:
+            from ..signals.model import read_model as read_signal_model
+            from ..spots.runtime import DIRECT_ENGINES
+            if not self.center_box_detector or recovery is not None or read_signal_model(signals)['engine'] not in DIRECT_ENGINES:
+                raise ValueError('Signal-first inference requires the center/box detector, direct signal model, and no recovery.')
         if self.center_box_detector and not self.refinement_model:
             raise ValueError('The center-and-box detector requires a Boundaries model to draw crop contours.')
         self.stardist_proposals = bool(stardist_proposals)
@@ -150,6 +176,11 @@ class AnalysisController(QtCore.QObject):
         if self.membrane_snap:
             self.stages.insert(next(i for i, s in enumerate(self.stages) if s[0] == 'signals'),
                                ('snap', 'Snapping contours to membrane peaks'))
+        if self.roundness is not None and self.roundness > 0:
+            self.stages.insert(next(i for i,s in enumerate(self.stages) if s[0]=='signals'),
+                               ('shape', 'Checking 3D cell roundness'))
+        if self.signal_first:
+            self.stages.insert(0, ('scout', 'Finding signals before cell contours'))
         self.image = Path(image).expanduser().resolve()
         if not self.image.is_file():
             raise FileNotFoundError(self.image)
@@ -171,6 +202,9 @@ class AnalysisController(QtCore.QObject):
         self.state['cell_recovery'] = self.recovery_config
         self.state['stardist_proposals'] = self.stardist_proposals
         self.state['consensus_model'] = self.consensus_model
+        self.state['minimum_roundness'] = self.roundness
+        self.state['signal_first'] = self.signal_first
+        self.state['channel_roles']=dict(cell=cell_channel,signals=self.signal_channels)
         self._persist()
         if self.center_box_detector:
             self.busy = True
@@ -183,10 +217,24 @@ class AnalysisController(QtCore.QObject):
                 self.recovery_path = self.directory / 'recovery-config.json'
                 self.recovery_path.write_text(json.dumps(self.recovery_config), encoding='utf-8')
                 arguments += ['--recovery-config', str(self.recovery_path)]
-            self._launch(0, arguments)
+            if self.signal_first:
+                self.cell_arguments = arguments + self.cell_channel_arguments
+                self._launch(0, ['-m', 'fish_viewer.signals', '--mode', 'scout',
+                    '--image', str(self.image), '--model', self.signal_model,
+                    '--cell-model', str(Path(cells).resolve()), '--output', str(self.directory/'work'),
+                    '--device', self.device, '--cancel-file', str(self.cancel_file)] + self.cell_channel_arguments + self.signal_channel_arguments)
+            else:
+                self._launch(0, arguments + self.cell_channel_arguments)
+            return
+        if manifest.get('engine') == 'stardist2d-slice':
+            self.busy = True
+            self.busy_changed.emit(True)
+            self._launch(0, ['-m','fish_viewer.neural.slice_inference','--image',str(self.image),
+                '--model',str(Path(cells).resolve()),'--output',str(self.directory/'work'),
+                '--device',self.device,'--cancel-file',str(self.cancel_file)] + self.cell_channel_arguments)
             return
         saved_config = NeuralConfig.from_dict(manifest['config'])
-        config = replace(saved_config if self.stardist_proposals else evidence_preset(saved_config), device=device)
+        config = replace(saved_config if self.stardist_proposals else evidence_preset(saved_config), device=device,cell_channel=cell_channel)
         request = dict(config=asdict(config), mode='apply', model=str(Path(cells).resolve()),
                        output=str(self.directory / 'work'), cancel_file=str(self.cancel_file),
                        entries=[dict(image=str(self.image), scene=None)])
@@ -276,6 +324,10 @@ class AnalysisController(QtCore.QObject):
             return
         try:
             self.state['stages'][self.stage] = report.get('directory', report.get('image'))
+            if self.stage == 'scout':
+                self._launch(next(i for i,s in enumerate(self.stages) if s[0]=='cells'),
+                             self.cell_arguments + ['--signal-candidates', str(Path(report['directory'])/'report.json')])
+                return
             if self.stage == 'guide_signals':
                 self._launch(next(i for i,s in enumerate(self.stages) if s[0]=='recover'),
                     ['-m','fish_viewer.proposals','--mode','recover','--cells-report',
@@ -283,11 +335,11 @@ class AnalysisController(QtCore.QObject):
                      str(Path(report['directory'])/'report.json'),'--output',str(self.directory/'work'),
                      '--device',self.device,'--cancel-file',str(self.cancel_file)])
                 return
-            if self.stage in ('cells', 'refine', 'snap', 'recover', 'consensus_cells', 'consensus'):
+            if self.stage in ('cells', 'refine', 'snap', 'recover', 'consensus_cells', 'consensus', 'shape'):
                 if len(report.get('files', [])) != 1 or report.get('failures'):
                     raise ValueError('Cell detection did not produce a complete scan result.')
                 if self.stage == 'cells' and self.refinement_model and not self.center_box_detector:
-                    self._launch(1, ['-m', 'fish_viewer.refinement', '--mode', 'apply',
+                    self._launch(self.stage_index+1, ['-m', 'fish_viewer.refinement', '--mode', 'apply',
                         '--cells-report', str(Path(report['directory']) / 'report.json'),
                         '--model', self.refinement_model, '--output', str(self.directory / 'work'),
                         '--device', self.device, '--cancel-file', str(self.cancel_file)]
@@ -300,7 +352,7 @@ class AnalysisController(QtCore.QObject):
                         ['-m','fish_viewer.proposals','--mode','apply','--image',str(self.image),
                          '--model',self.consensus_model,'--boundary-model',self.refinement_model,
                          '--output',str(self.directory/'work'),'--device',self.device,
-                         '--cancel-file',str(self.cancel_file)])
+                         '--cancel-file',str(self.cancel_file)] + self.cell_channel_arguments)
                     return
                 if self.stage == 'consensus_cells':
                     self._launch(next(i for i,s in enumerate(self.stages) if s[0]=='consensus'),
@@ -316,11 +368,11 @@ class AnalysisController(QtCore.QObject):
                         ['-m','fish_viewer.signals','--mode','apply','--image',str(self.image),
                          '--cell-predictions',report['files'][0]['recovery_candidates'],'--model',self.signal_model,
                          '--output',str(self.directory/'work'),'--device',self.device,
-                         '--cancel-file',str(self.cancel_file)])
+                         '--cancel-file',str(self.cancel_file)] + self.signal_channel_arguments)
                     return
                 if self.stage == 'recover':
                     self.state['recovery_summary'] = report['summary']
-                if self.stage != 'snap' and self.membrane_snap:
+                if self.stage not in ('snap', 'shape') and self.membrane_snap:
                     snap_config = self.directory / 'membrane-config.json'
                     snap_config.write_text(json.dumps(self.membrane_snap, indent=2), encoding='utf-8')
                     self._launch(next(i for i, s in enumerate(self.stages) if s[0] == 'snap'),
@@ -334,11 +386,17 @@ class AnalysisController(QtCore.QObject):
                     return
                 if self.stage == 'snap':
                     self.state['membrane_snap_summary'] = report['summary']
+                if self.stage != 'shape' and self.roundness is not None and self.roundness > 0:
+                    self._launch(next(i for i,s in enumerate(self.stages) if s[0]=='shape'),
+                        ['-m','fish_viewer.analysis.shape','--cells-report', str(Path(report['directory'])/'report.json'),
+                         '--output',str(self.directory/'work'),'--minimum',str(self.roundness),
+                         '--cancel-file',str(self.cancel_file)])
+                    return
                 args = ['-m', 'fish_viewer.signals', '--mode', 'apply', '--image', str(self.image),
                         '--cell-predictions', report['files'][0]['predictions'], '--model', self.signal_model,
                         '--output', str(self.directory / 'work'), '--device', self.device,
                         '--cancel-file', str(self.cancel_file)]
-                self._launch(next(i for i,s in enumerate(self.stages) if s[0]=='signals'), args)
+                self._launch(next(i for i,s in enumerate(self.stages) if s[0]=='signals'), args + self.signal_channel_arguments)
             elif self.stage in ('signals', 'filter'):
                 operation = 'filter' if self.stage == 'signals' else 'measure'
                 self._launch(self.stage_index+1, ['-m', 'fish_viewer.workflow', operation,

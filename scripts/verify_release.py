@@ -31,30 +31,59 @@ def main():
     if args.require_latest_models and not (boundary and proposals):
         parser.error('The release must include the current cell and contour models.')
     if args.require_latest_models and Path(boundary).name != 'refinement-bias-candidate':
-        parser.error('The release must default to models/refinement-bias-candidate.')
+        parser.error('The release must include models/refinement-bias-candidate for optional crop contours.')
     provenance=ROOT/'models/origins.json'
     if args.require_latest_models and not provenance.is_file():
         parser.error('The release must include models/origins.json with model checksums.')
     if provenance.exists():
         origins = json.loads(provenance.read_text())
-        if args.require_latest_models and not {'cells', 'cells-sensitive', 'signals', 'proposals', 'refinement', 'refinement-bias-candidate', 'signals-center-unet', 'boundary-annotations'}.issubset(origins):
+        if args.require_latest_models and not {'cells', 'cells-conservative', 'cells-sensitive', 'cells-preprocessed', 'cells-stardist2d', 'signals', 'proposals', 'refinement', 'refinement-bias-candidate', 'signals-center-unet', 'boundary-annotations'}.issubset(origins):
             parser.error('Missing model provenance for a required checkpoint.')
         for label,info in origins.items():
             for name,digest in info['sha256'].items():
                 with (ROOT/'models'/label/name).open('rb') as stream:
                     assert hashlib.file_digest(stream,'sha256').hexdigest()==digest, f'Model checksum mismatch: {label}/{name}'
     tf,StarDist3D,_,info=runtime('cpu')
-    cell_model=StarDist3D(None,name=cells.name,basedir=str(cells.parent))
+    from stardist.models import StarDist2D
+    cell_model=StarDist2D(None,name=cells.name,basedir=str(cells.parent))
     manifest=json.loads((cells/'fish-model.json').read_text())
     cell_model.load_weights(manifest['checkpoint'])
-    probability,distances=cell_model.predict(np.zeros((16,16,16),np.float32),axes='ZYX',verbose=0)
+    probability,distances=cell_model.predict(np.zeros((32,32),np.float32),axes='YX',verbose=0)
     assert np.isfinite(probability).all() and np.isfinite(distances).all()
+    conservative=ROOT/'models/cells-conservative'
+    old=StarDist3D(None,name=conservative.name,basedir=str(conservative.parent))
+    old.load_weights('best.weights.h5')
+    p,d=old.predict(np.zeros((16,16,16),np.float32),axes='ZYX',verbose=0)
+    assert np.isfinite(p).all() and np.isfinite(d).all()
+    balanced = ROOT / 'models/cells'
+    balanced_model = StarDist3D(None, name=balanced.name, basedir=str(balanced.parent))
+    balanced_manifest = json.loads((balanced/'fish-model.json').read_text())
+    balanced_model.load_weights(balanced/balanced_manifest['checkpoint'])
+    balanced_probability, balanced_distances = balanced_model.predict(np.zeros((16,16,16),np.float32),axes='ZYX',verbose=0)
+    assert np.isfinite(balanced_probability).all() and np.isfinite(balanced_distances).all()
     sensitive = ROOT / 'models/cells-sensitive'
     sensitive_model = StarDist3D(None, name=sensitive.name, basedir=str(sensitive.parent))
     sensitive_manifest = json.loads((sensitive/'fish-model.json').read_text())
     sensitive_model.load_weights(sensitive/sensitive_manifest['checkpoint'])
     sensitive_probability, sensitive_distances = sensitive_model.predict(np.zeros((16,16,16),np.float32),axes='ZYX',verbose=0)
     assert np.isfinite(sensitive_probability).all() and np.isfinite(sensitive_distances).all()
+    enhanced = ROOT / 'models/cells-preprocessed'
+    if (enhanced / 'fish-model.json').is_file():
+        check_models(enhanced,signals)
+        enhanced_manifest=json.loads((enhanced/'fish-model.json').read_text())
+        enhanced_model=StarDist3D(None,name=enhanced.name,basedir=str(enhanced.parent))
+        enhanced_model.load_weights(enhanced/enhanced_manifest['checkpoint'])
+        from fish_viewer.neural.preprocessing import membrane_connected
+        enhanced_probability,enhanced_distances=enhanced_model.predict(membrane_connected(np.zeros((16,)*3,np.float32),(.3,)*3),axes='ZYX',verbose=0)
+        assert np.isfinite(enhanced_probability).all() and np.isfinite(enhanced_distances).all()
+    sliced=ROOT/'models/cells-stardist2d'
+    if (sliced/'fish-model.json').is_file():
+        manifest=check_models(sliced,signals)
+        from stardist.models import StarDist2D
+        sliced_model=StarDist2D(None,name=sliced.name,basedir=str(sliced.parent))
+        sliced_model.load_weights(sliced/manifest['checkpoint'])
+        outputs=sliced_model.keras_model.predict_on_batch(np.zeros((1,32,32,1),np.float32))
+        assert all(np.isfinite(a).all() for a in outputs)
     from fish_viewer.boundary.model import network as learned_network, read_model as read_learned_model
     learned_folder = ROOT/'models/boundary-annotations'
     learned_manifest = read_learned_model(learned_folder)
@@ -125,8 +154,8 @@ def main():
                 report = json.loads(process.stdout.splitlines()[-1])['report']
                 assert report['passed'], f'Empty-signal controls failed for {label}'
                 direct_controls[label] = report
-    print(json.dumps(dict(status='complete',default_signal_model=signals.name,default_signal_engine=default_signal_manifest['engine'],runtime=info,cell_probability_shape=list(probability.shape),
-                         default_boundary_model=Path(boundary).name if boundary else None,
+    print(json.dumps(dict(status='complete',default_cell_model=cells.name,default_signal_model=signals.name,default_signal_engine=default_signal_manifest['engine'],runtime=info,cell_probability_shape=list(probability.shape),
+                         default_boundary_model=None, optional_boundary_model=Path(boundary).name if boundary else None,
                          signal_score=score.tolist(),boundary_logit_shape=boundary_shapes.get(Path(boundary).name if boundary else ''),
                          learned_boundary_shape=list(learned_output.shape),
                          sensitive_cell_probability_shape=list(sensitive_probability.shape),

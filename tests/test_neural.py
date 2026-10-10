@@ -160,3 +160,28 @@ def test_real_stardist_training_checkpoint_and_prediction(tmp_path,monkeypatch,s
     with tf.GradientTape() as tape:
         loss=loaded.keras_model.loss[1](tf.zeros((1,1,1,1,config.rays+1)),distances)
     assert np.all(tape.gradient(loss,distances).numpy()==0)
+
+
+@pytest.mark.neural
+def test_stardist_finetuning_records_initial_checkpoint(tmp_path,monkeypatch):
+    if not importlib.util.find_spec('stardist'):pytest.skip('Optional StarDist dependencies not installed')
+    import hashlib
+    import json
+    from dataclasses import replace
+    from fish_viewer.neural import engine
+    cases=[make_case(tmp_path,g) for g in ('101212','131212','141212')]
+    monkeypatch.setattr(engine,'load_cases',lambda *args,**kwargs:cases)
+    config=NeuralConfig(epochs=1,steps_per_epoch=1,patch_z=32,patch_xy=32,rays=16,filters=8,
+        device='cpu',calibrate_probability=False)
+    initial=engine.run_neural([c.entry for c in cases],config,tmp_path/'initial')
+    assert initial['status']=='complete'
+    folder=Path(initial['model_directory'])
+    digest=hashlib.sha256((folder/'best.weights.h5').read_bytes()).hexdigest()
+    report=engine.run_neural([c.entry for c in cases],replace(config,learning_rate=.00003),tmp_path/'finetuned',
+        initial_model_directory=folder)
+    assert report['status']=='complete'
+    assert report['initialization']['checkpoint_sha256']==digest
+    assert hashlib.sha256((folder/'best.weights.h5').read_bytes()).hexdigest()==digest
+    manifest=json.loads((Path(report['model_directory'])/'fish-model.json').read_text())
+    assert manifest['initialization']==report['initialization']
+    assert manifest['config']['learning_rate']==.00003

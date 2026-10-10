@@ -39,6 +39,7 @@ def main():
     parser.add_argument('--output',default='neural_runs')
     parser.add_argument('--mode',choices=['train','apply'],default='train')
     parser.add_argument('--model',type=Path)
+    parser.add_argument('--initial-model',type=Path,help='Fine-tune a compatible StarDist checkpoint; applied only in train mode.')
     parser.add_argument('--settings',type=Path)
     parser.add_argument('--epochs',type=int)
     parser.add_argument('--steps',type=int)
@@ -81,6 +82,7 @@ def main():
         args.output=request['output'];args.mode=request['mode'];args.model=request.get('model')
         args.cancel_file=request.get('cancel_file')
         args.audit=request.get('audit')
+        args.initial_model=request.get('initial_model')
     else:
         if args.settings:
             settings=json.loads(args.settings.read_text())
@@ -133,7 +135,7 @@ def main():
     def emit(event):
         print(json.dumps(event,default=serialize,allow_nan=False),file=output,flush=True)
     from .engine import run_neural
-    report=run_neural(entries,config,args.output,args.mode,args.model,emit,cancel,audit_path=args.audit)
+    report=run_neural(entries,config,args.output,args.mode,args.model,emit,cancel,audit_path=args.audit,initial_model_directory=args.initial_model)
     return 0 if report['status']=='complete' else 2 if report['status']=='cancelled' else 1
 
 

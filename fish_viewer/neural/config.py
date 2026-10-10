@@ -40,12 +40,16 @@ class NeuralConfig:
     synthetic_background_fraction: float = 0.0
     select_balanced_acceptance: bool = False
     use_shape_filter: bool = True
+    cell_channel: int | None = None
+    preprocessing: str = 'none'
 
     def geometry(self):
-        keys = ('voxel_um', 'min_diameter_um', 'max_diameter_um', 'min_sphericity', 'max_elongation', 'exclude_border')
+        keys = ('voxel_um', 'min_diameter_um', 'max_diameter_um', 'min_sphericity', 'max_elongation', 'exclude_border', 'cell_channel')
         return PipelineConfig(**{k:getattr(self, k) for k in keys}).validate()
 
     def validate(self):
+        if self.preprocessing not in ('none', 'membrane-connected-v1'):
+            raise ValueError('Unknown neural preprocessing recipe.')
         self.geometry()
         for key, value in asdict(self).items():
             if isinstance(value, (int, float)) and not math.isfinite(value):

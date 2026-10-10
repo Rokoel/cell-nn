@@ -17,7 +17,7 @@ def main():
     early.add_argument('--model', type=Path)
     early.add_argument('--mode')
     known, _ = early.parse_known_args()
-    if known.model and known.mode in ('apply', 'controls'):
+    if known.model and known.mode in ('apply', 'controls', 'scout'):
         from ..spots.runtime import DIRECT_ENGINES, dispatch
         manifest = json.loads((known.model / 'signal-model.json').read_text())
         if manifest.get('engine') in DIRECT_ENGINES:
@@ -37,6 +37,7 @@ def main():
     parser.add_argument('--model',type=Path)
     parser.add_argument('--image',type=Path)
     parser.add_argument('--cell-predictions',type=Path)
+    parser.add_argument('--signal-channels',nargs='+',type=int)
     parser.add_argument('--scene',type=Path)
     parser.add_argument('--epochs',type=int)
     parser.add_argument('--steps',type=int)
@@ -69,7 +70,7 @@ def main():
             report=train(args.audit,args.output,config,emit,cancel,initial_model=args.initial_model)
         else:
             if not args.model or not args.image or not args.cell_predictions:parser.error('Application requires --model, --image and --cell-predictions.')
-            report=apply(args.image,args.scene,args.cell_predictions,args.model,args.output,config.device,emit,cancel)
+            report=apply(args.image,args.scene,args.cell_predictions,args.model,args.output,config.device,emit,cancel,args.signal_channels)
     return 0 if report['status']=='complete' else 1
 
 

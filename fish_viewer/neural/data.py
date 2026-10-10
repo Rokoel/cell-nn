@@ -76,7 +76,18 @@ def prepare_neural(dataset, config, emit=None, cancel=None):
     geometry=config.geometry()
     if config.native_sampling:
         geometry=replace(geometry,voxel_um=max(config.voxel_um,*dataset.spacing[:2]))
-    return prepare(dataset,geometry,emit,cancel,background_correct=False,max_voxels=None)
+    prepared = prepare(dataset,geometry,emit,cancel,background_correct=False,max_voxels=None)
+    if config.preprocessing != 'none':
+        from .preprocessing import membrane_connected
+        import time
+        started=time.perf_counter()
+        if emit:emit(dict(kind='stage',stage='Membrane enhancement',progress=0))
+        prepared.evidence_image = prepared.image
+        prepared.image = membrane_connected(prepared.image, prepared.spacing, cancel)
+        prepared.timings['membrane_enhancement']=time.perf_counter()-started
+        if emit:emit(dict(kind='stage',stage='Membrane enhancement',progress=100))
+        prepared.previews['Network preprocessing'] = prepared.image[len(prepared.image)//2]
+    return prepared
 
 
 def three_way_split(cases):
@@ -202,6 +213,9 @@ class WithSyntheticBackground:
         rng=np.random.default_rng(self.config.seed+index)
         shape=(self.config.patch_z,self.config.patch_xy,self.config.patch_xy)
         image=np.maximum(0,rng.normal(0,.002,shape)).astype(np.float32)
+        if self.config.preprocessing != 'none':
+            from .preprocessing import membrane_connected
+            image=membrane_connected(image,(self.config.voxel_um,)*3)
         return image,np.zeros(shape,np.int16)
 
 

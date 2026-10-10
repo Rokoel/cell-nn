@@ -182,6 +182,8 @@ def audit_collection(root,config,directory,emit=print,cancel=None):
 def load_audit(path,config,directory,emit,cancel=None,training=True):
     path=Path(path).resolve();report=json.loads(path.read_text())
     if report.get('engine')!='stardist3d-audit' or report['status']!='complete':raise ValueError('Select a complete, error-free annotation audit.')
+    if report['config'].get('preprocessing', 'none') != config.preprocessing:
+        raise ValueError('Audit and training preprocessing differ; build a matching preprocessing cache.')
     for key in ('voxel_um','min_diameter_um','max_diameter_um','native_sampling','overlap_policy','seed'):
         if report['config'].get(key)!=getattr(config,key):raise ValueError(f'Audit and training differ in {key}; regenerate the audit.')
     if training and report.get('parent_audit'):
@@ -205,6 +207,8 @@ def load_audit(path,config,directory,emit,cancel=None,training=True):
         refs,names=read_references(cache/'references.npz')
         prepared=Prepared(image,tuple(a['spacing_zyx']),tuple(a['origin_xyz']),a['channel'],a['channel_scores'],a['fingerprint'],
             {'Raw selected channel':image[len(image)//2], 'Background corrected':image[len(image)//2]}, {},a['warnings'])
+        if config.preprocessing != 'none':
+            prepared.evidence_image = np.load(cache/'evidence.npy', mmap_mode='r')
         output=directory/cache.name;output.mkdir()
         entry=LibraryEntry(Path(row['image']),Path(row['scene']) if row['scene'] else None)
         case=NeuralCase(entry,prepared,refs,names,a['group'],output,labels,a['reference_cut'],a)

@@ -40,6 +40,8 @@ def membrane_evidence(mask,box,prepared,config):
     These are image-evidence scores, not calibrated probabilities of correctness.
     """
     spacing=np.asarray(prepared.spacing)
+    source = getattr(prepared, 'evidence_image', None)
+    if source is None: source = prepared.image
     points=np.argwhere(mask)
     center=points.mean(0)
     if not mask[tuple(np.rint(center).astype(int))]:
@@ -56,7 +58,7 @@ def membrane_evidence(mask,box,prepared,config):
     origin=np.array([s.start for s in box]);margin=np.ceil(1.8/spacing).astype(int)
     lo=np.maximum(0,origin-margin);hi=np.minimum(prepared.image.shape,[s.stop for s in box]+margin)
     crop=tuple(slice(int(a),int(b)) for a,b in zip(lo,hi))
-    image=ndi.gaussian_filter(np.asarray(prepared.image[crop],np.float32),sigma=np.maximum(.5,.25/spacing))
+    image=ndi.gaussian_filter(np.asarray(source[crop],np.float32),sigma=np.maximum(.5,.25/spacing))
     gradients=np.asarray(np.gradient(image,*spacing))
     base=(center+origin-lo)[:,None]
     def sample(distances,values=image):

@@ -25,6 +25,10 @@ parser.add_argument('--learned-boundary', action='store_true', help='Exercise an
 parser.add_argument('--cell-consensus', action='store_true', help='Exercise agreement between both cell pipelines')
 parser.add_argument('--stardist-proposals', action='store_true', help='Exercise strict StarDist proposal redrawing')
 parser.add_argument('--cell-recovery', action='store_true', help='Exercise local membrane, retry and signal-guided cell recovery')
+parser.add_argument('--pipeline', choices=['conservative','balanced','crop','hybrid','consensus','signal-first','preprocessed','stardist2d'])
+parser.add_argument('--roundness', type=float, default=.72)
+parser.add_argument('--cell-channel',type=int)
+parser.add_argument('--signal-channels',nargs='+',type=int)
 args = parser.parse_args()
 if args.package_root:
     sys.path.insert(0, str(args.package_root.resolve()))
@@ -76,11 +80,16 @@ def exercise():
         original_hash = digest(args.image)
         window.output.setText(str((output / 'runs').resolve()))
         window.device.setCurrentText(args.device)
+        if args.pipeline:
+            window.pipeline.setCurrentIndex(window.pipeline.findData(args.pipeline))
+        window.roundness.setValue(round(args.roundness*100))
         window.membrane_snap.setChecked(args.membrane_snap)
         window.learned_boundary.setChecked(args.learned_boundary)
         window.cell_recovery.setChecked(args.cell_recovery)
-        window.stardist_proposals.setChecked(args.stardist_proposals or args.cell_consensus)
-        window.consensus_cells.setChecked(args.cell_consensus)
+        if args.stardist_proposals or args.cell_consensus:
+            window.stardist_proposals.setChecked(True)
+        if args.cell_consensus:
+            window.consensus_cells.setChecked(True)
         if args.membrane_snap or args.learned_boundary:
             window.options_button.setChecked(True)
         if args.boundary_model:
@@ -94,6 +103,14 @@ def exercise():
             assert Path(window.signal_model.text()).is_relative_to(args.package_root.resolve())
         window.add_paths([args.image])
         wait(lambda: window.dataset is not None and not window.loading)
+        if args.cell_channel is not None or args.signal_channels is not None:
+            window.show_channels()
+            if args.cell_channel is not None:
+                window.cell_channel_choice.setCurrentIndex(window.cell_channel_choice.findData(args.cell_channel))
+            if args.signal_channels is not None:
+                for i,check in enumerate(window.signal_channel_checks):
+                    check.setChecked(i in args.signal_channels)
+            window.channel_dialog.close()
         window.grab().save(str(output / 'ready.png'))
         window.run_button.click()
         assert window.running

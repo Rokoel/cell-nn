@@ -6,20 +6,23 @@ detects cells and signals, removes cells without signals, measures A–B distanc
 to each cell border, and saves Imaris files and CSVs automatically. See the
 [FISH Analysis guide](docs/fish-analysis.md) for setup, controls, models and output files.
 
-The default pipeline uses the **3D center/box detector → surface-trained crop
-U-Net → 3D signal-center U-Net** (`models/proposals`,
-`models/refinement-bias-candidate`, `models/signals-center-unet`). The full 144-scan held-out comparison gives 5.70% matched volume MAPE and
-0.116 µm distance MAE for this default; incomplete manual cell annotations do
-not establish cell precision. See [full results](reports/all-heldout-comparison/README.md).
+Analysis now offers fixed **conservative StarDist**, **balanced StarDist**,
+**center/box + surface-loss**, **sensitive StarDist hybrid**, **consensus**, and
+an experimental **signals-first** pipeline. All use the signal-center U-Net.
+Under **Pipeline and settings**, a **Minimum roundness** slider (default 0.72;
+0 disables it) rejects irregular 3D contours without reshaping accepted cells.
+Training buttons and model-folder pickers have been removed from Analysis.
 
-The release also includes a [single-image training annotator](docs/training-annotator.md)
-(`run-annotator.sh` / `run-annotator.bat`) and an optional boundary-recognition
-U-Net trained from 45 brush-annotated crops. Enable **Learned boundary guidance
-(experimental)** in Analysis to guide existing 3D contours. On the same 496
-matched cells, volume MAPE changed from 5.71% to 5.59%; distance accuracy was
-essentially unchanged, so the option remains off by default.
-[Results and training curves](reports/annotation-boundary/README.md).
-Linux/Windows releases include all three apps, eleven model folders and reports.
+Fine-tuned StarDist 2D is now the default, with adjacent contours linked into 3D cells. Signals-first searches the scan for
+signal centers, keeps signal-supported cell boxes, draws their contours and then
+rechecks signals inside accepted cells. The whole-scan scouting context is new
+for the existing signal model; inspect [the experiment](reports/signal-first/README.md)
+before treating it as an improvement. Older models remain on disk for reproducibility.
+
+The [training annotator](docs/training-annotator.md) (`run-annotator.sh` /
+`run-annotator.bat`) and the full Viewer retain their separate training workflows.
+Historical [144-scan metrics](reports/all-heldout-comparison/README.md) describe
+the former center/box default with shape rejection off, not the updated presets.
 
 A Python desktop viewer with classical and neural 3D cell contour pipelines for Imaris microscopy stacks. Uses **PySide6 + PyVista/VTK** on Linux and Windows. Images and original annotations are opened read-only.
 
@@ -153,3 +156,10 @@ Format reference: [Oxford Instruments' Imaris file format description](https://i
 Experimental direct signal-center models (small 3D U-Net and masked Spotiflow)
 can be selected in either app after installing the separate `setup-spots` runtime.
 See [setup, supervision and comparison](docs/signal-centers.md).
+
+FISH Analysis supports per-scan cell/signal channel roles and an additional
+[membrane-preprocessed StarDist preset](docs/preprocessed-stardist.md).
+
+## StarDist attribution
+
+The default cell model is fine-tuned from the official single-channel fluorescence checkpoint `2D_versatile_fluo`. Please cite Uwe Schmidt, Martin Weigert, Coleman Broaddus and Gene Myers, **Cell Detection with Star-convex Polygons**, MICCAI 2018, [doi:10.1007/978-3-030-00934-2_30](https://doi.org/10.1007/978-3-030-00934-2_30), [paper](https://arxiv.org/abs/1806.03535). The original weights’ BSD-3-Clause license is bundled at `models/cells-stardist2d/PRETRAINED-LICENSE.txt`.

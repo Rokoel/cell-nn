@@ -170,3 +170,31 @@ def test_zero_upstream_flow_is_finite_with_recovery_precision():
     with torch.inference_mode(), torch.autocast('cpu', dtype=autocast_dtype(model)):
         output = model(torch.zeros((1, 3, 32, 32, 32)))
     assert torch.isfinite(output['flow']).all()
+
+
+def test_full_scan_scout_preserves_channels_coordinates_and_is_only_a_proposal(tmp_path,monkeypatch):
+    pytest.importorskip('torch')
+    import json
+    from types import SimpleNamespace
+    from fish_viewer.spots import scouting
+    model=tmp_path/'model';model.mkdir();(model/'best.pt').write_bytes(b'checkpoint')
+    (model/'proposal-model.json').write_text('{}')
+    dataset=SimpleNamespace(volumes=[np.zeros((20,)*3,np.float32)]*3,
+        spacing=(.15,)*3,center_origin=(10,20,30),metadata=SimpleNamespace(channels=[
+            SimpleNamespace(name=f'channel-{i}',color=(1,0,0)) for i in range(3)]))
+    monkeypatch.setattr(scouting,'load_dataset',lambda entry:dataset)
+    monkeypatch.setattr(scouting,'prepare',lambda *a,**kw:SimpleNamespace(channel=0,fingerprint='same'))
+    monkeypatch.setattr(scouting,'load',lambda *a:(object(),dict(threshold=.8,checkpoint='best.pt'),CenterConfig(),object()))
+    def predict(*args):
+        heat=np.zeros((96,)*3,np.float32);heat[8,9,10]=.9
+        heat[80,80,80]=.99  # Padding outside the scan cannot generate a candidate.
+        return heat,None
+    monkeypatch.setattr(scouting,'predict_volume',predict)
+    report=scouting.scout(tmp_path/'scan.ims',model,tmp_path/'runs',model,device='cpu')
+    assert report['status']=='complete' and report['candidate_only']
+    assert {p['channel'] for p in report['points']}=={1,2}
+    assert len(report['points'])==2
+    assert np.allclose(report['points'][0]['xyz'],[11.5,21.35,31.2])
+    assert all(p['cell_id']==0 for p in report['points'])
+    assert report['fingerprint']=='same'
+    assert json.loads((__import__('pathlib').Path(report['directory'])/'report.json').read_text())['candidate_count']==2

@@ -49,7 +49,8 @@ def main():
                  'evaluate_center_measurements.py', 'experiment_contour_bias.py', 'train_contour_bias.py',
                  'build_contour_bias_patches.py', 'run_contour_bias_training.py', 'run_contour_correction_control.py',
                  'finalize_contour_bias.py', 'evaluate_contour_bias_signals.py', 'report_contour_bias.py',
-                 'plot_contour_bias_overlays.py', 'check_contour_correction.py'):
+                 'plot_contour_bias_overlays.py', 'check_contour_correction.py',
+                 'train_preprocessed_stardist.py', 'finetune_preprocessed_stardist.py', 'prepare_stardist_baseline.py', 'report_preprocessed_stardist.py', 'finetune_stardist2d.py', 'report_stardist2d.py', 'apply_stardist2d.py', 'check_stardist2d_controls.py', 'benchmark_stardist2d_distances.py', 'benchmark_all_heldout.py', 'evaluate_cell_contours.py'):
         shutil.copy2(ROOT / 'scripts' / name, destination / 'scripts' / name)
     shutil.copy2(ROOT / 'scripts/calibrate_cell_proposals.py', destination / 'scripts/calibrate_cell_proposals.py')
     shutil.copy2(ROOT / 'scripts/evaluate_cell_centers.py', destination / 'scripts/evaluate_cell_centers.py')
@@ -57,7 +58,7 @@ def main():
     shutil.copy2(ROOT / 'scripts/evaluate_cell_contours.py', destination / 'scripts/evaluate_cell_contours.py')
     shutil.copy2(ROOT / 'scripts/check_cell_crop_controls.py', destination / 'scripts/check_cell_crop_controls.py')
     for name in ('benchmark_all_heldout.py', 'summarize_all_heldout.py', 'plot_heldout_comparison.py',
-                 'benchmark_annotation_boundaries.py', 'summarize_annotation_boundaries.py',
+                 'benchmark_annotation_boundaries.py', 'summarize_annotation_boundaries.py', 'benchmark_signal_first.py',
                  'benchmark_cell_consensus.py', 'benchmark_stardist_hybrid.py'):
         shutil.copy2(ROOT / 'scripts' / name, destination / 'scripts' / name)
     (destination / 'docs').mkdir()
@@ -97,10 +98,11 @@ def main():
         shutil.copytree(ROOT / 'reports/signal-centers', destination / 'reports/signal-centers')
     for name in ('training-annotator', 'annotation-boundary-model', 'cell-consensus', 'stardist-hybrid'):
         shutil.copy2(ROOT / 'docs' / (name + '.md'), destination / 'docs' / (name + '.md'))
-    for name in ('annotation-boundary', 'all-heldout-comparison', 'cell-consensus', 'stardist-hybrid'):
+    for name in ('annotation-boundary', 'all-heldout-comparison', 'cell-consensus', 'stardist-hybrid', 'signal-first'):
         shutil.copytree(ROOT / 'reports' / name, destination / 'reports' / name)
     provenance = {}
-    model_sources = [('cells', cells), ('signals', ROOT / 'models/signals')]
+    model_sources = [('cells', ROOT / 'models/cells'), ('cells-conservative', ROOT / 'models/cells-conservative'),
+                     ('signals', ROOT / 'models/signals')]
     from fish_viewer.boundary.model import read_model as read_boundary_model
     read_boundary_model(ROOT / 'models/boundary-annotations')
     model_sources.append(('boundary-annotations', ROOT / 'models/boundary-annotations'))
@@ -134,6 +136,20 @@ def main():
             from fish_viewer.refinement.config import read_model
             read_model(source)
             model_sources.append((label, source))
+    enhanced = ROOT / 'models/cells-preprocessed'
+    if (enhanced / 'fish-model.json').is_file():
+        check_models(enhanced, signals)
+        model_sources.append(('cells-preprocessed', enhanced))
+    if (ROOT / 'reports/preprocessed-stardist').exists():
+        shutil.copytree(ROOT / 'reports/preprocessed-stardist', destination / 'reports/preprocessed-stardist')
+    if (ROOT / 'docs/preprocessed-stardist.md').exists():
+        shutil.copy2(ROOT / 'docs/preprocessed-stardist.md', destination / 'docs/preprocessed-stardist.md')
+    sliced = ROOT / 'models/cells-stardist2d'
+    if (sliced / 'fish-model.json').is_file():
+        check_models(sliced, signals)
+        model_sources.append(('cells-stardist2d', sliced))
+        shutil.copy2(ROOT / 'docs/stardist2d.md', destination / 'docs/stardist2d.md')
+        shutil.copytree(ROOT / 'reports/stardist2d', destination / 'reports/stardist2d')
     for label, source in model_sources:
         target = destination / 'models' / label
         target.mkdir(parents=True)

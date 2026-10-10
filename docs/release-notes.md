@@ -1,44 +1,42 @@
-# FISH Analysis v0.5.1
+# FISH Analysis v0.6.0
 
-This release adds the training-image annotator, a boundary-recognition U-Net trained from its annotations, and optional learned guidance for existing 3D contours. The established default remains the center/box detector → surface-loss contour U-Net → signal-center U-Net. Learned guidance, sensitive StarDist hybrid, consensus, membrane snapping and cell recovery remain experimental options.
+Fine-tuned StarDist 2D is now the default cell-contour model, followed by the existing signal-center 3D U-Net. The single cell intensity channel is enhanced, XY contours are predicted, and adjacent contours are linked into calibrated 3D cells. The default minimum roundness remains 0.72. Cells without signals are removed; signal centers, point Bs, distance lines, volumes and per-channel distances are exported to Imaris and the two-sheet Excel workbook.
 
-The Windows signal-runtime launcher now waits for a subprocess instead of using CRT interpreter replacement, fixing a crash discovered during v0.5.0 release verification. Version v0.5.0 was not published.
+This release also includes explicit cell/signal channel roles, stain-aware automatic channel selection, a preprocessed 3D StarDist option, and the signals-first experimental preset. Existing presets and their models remain available. Analysis has no training buttons. The app and checkpoints are bundled for Linux and Windows.
 
-Linux and Windows source/model ZIPs include all three apps (Analysis, Viewer and Annotator), eleven model folders, launch/setup scripts, evaluation reports and model checksums. Python 3.12 and internet access for initial dependency setup are required. Windows inference uses CPU; Linux also supports GPU setup. Original FISH scans, training caches and user annotation images are not distributed.
+## Held-out measurements
 
-## New annotation and boundary tools
+All 71 held-out test scans were tested with fixed models and thresholds. No test-set tuning was performed.
 
-- Annotate a random single-image crop from the saved training split using only the audited cell channel. Mark “Likely cell border” or “Likely not cell border” with translucent brushes, eraser, Fill, Clear all and Ctrl+Z undo. Zoom/pan and brightness controls are included.
-- Save & next persists original cell-channel pixels, labels and calibrated source coordinates. Skip discards all current marks. Untouched pixels remain unknown and contribute no training loss.
-- The new 121,969-parameter boundary U-Net was refitted on all 45 annotated crops from 40 scans / 32 acquisition groups for 35 epochs. A separate development checkpoint used 37 training crops and eight validation crops from disjoint acquisition groups. On labeled validation pixels it achieved **71.7% precision, 81.9% recall, 76.5% F1 and 61.9% IoU** at threshold 0.6. These scores describe broad brush bands, not exact measurement surfaces; they are not scores from the final all-annotation refit.
-- Analysis → processing options → **Learned boundary guidance (experimental)** uses those predictions for bounded, smooth 3D contour corrections. Raw membrane evidence, topology, cell cores and non-overlap remain acceptance checks. It creates no new cell instances. Signal-model weights are unchanged.
-- The annotator requires the original dataset and a saved training-split audit; use `--audit` and `--fish-root` when relocating them. Launch with `run-annotator.sh` / `run-annotator.bat`.
+| Default pipeline, roundness 0.72 and any-signal retention | Result |
+|---|---:|
+| Matched signals with actual manual A–B distances | 112 |
+| Signal-to-border distance MAE | 0.175 µm |
+| Signal-to-border distance RMSE | 0.247 µm |
+| Median absolute distance error | 0.124 µm |
+| Mean signed distance error | −0.040 µm |
+| Distance MAE 95% acquisition-bootstrap CI | 0.136–0.211 µm |
+| Mean absolute distance percentage error | 40.16% |
+| Median absolute distance percentage error | 26.07% |
+| Matched retained complete cells for volume comparison | 121 |
+| Mean absolute volume percentage error | 5.64% |
+| Final retained cells, including unscored cells | 478 |
+| Predicted signals, including unscored detections | 524 |
 
-## Full held-out pipeline comparison
+Without roundness or signal retention, fine-tuned 2D finds 1,399 contours and matches **197/505 complete manual cells**, with **7.72% mean absolute volume error** and **0.245 µm mean symmetric surface error**. On the 163 cells shared with preprocessed 3D, volume error is **7.39% versus 11.16%**. Preprocessed 3D matches more cells (265/505), and its mean per-cell HD95 is better (0.692 versus 0.871 µm). These tradeoffs remain relevant despite the requested default change.
 
-All **144 held-out scans** were tested: 71 test and 73 validation scans. Counts below refer to complete manual cells matched at IoU ≥0.5 before signal filtering. Volume/distance errors are conditional on matched complete cells with accepted signals; all outliers are retained. Different methods have different matched subsets.
+Errors are conditional on whole-cell IoU ≥0.5 and, for distances, same-cell/channel signal matches within 0.6 µm. The distance reference is the actual manual A–B line. All outliers are included. Incomplete annotations cannot establish field precision; conditional errors do not measure missed objects. The test fold was inspected in earlier development, so these are exploratory estimates. Older headline means use different matched objects and cannot alone establish a distance improvement.
 
-| Pipeline | Cells detected before signal filtering | Complete manual cells matched | Volume MAPE | Distance MAE |
-|---|---:|---:|---:|---:|
-| Current default | 9,826 | 758 | **5.70%** (499 cells) | **0.116 µm** (396 signals) |
-| Sensitive StarDist → surface-loss contours → signal U-Net | 18,285 | 869 | 8.97% (539 cells) | 0.136 µm (442 signals) |
-| Both-detector consensus | 9,004 | 729 | 7.88% (463 cells) | 0.126 µm (375 signals) |
-| Current default + learned boundary guidance | 9,826 | 760 | 5.70% (502 cells) | 0.117 µm (396 signals) |
+Detailed tables, graphs, matching policies and acquisition-bootstrap intervals are bundled under `reports/stardist2d/`, including `distances/`.
 
-The sensitive model is now bundled as `models/cells-sensitive`; its proposal masks supply boxes/seeds, and failed contour predictions are rejected. Consensus keeps whole hybrid contours only where both approaches match at IoU ≥0.5; it does not intersect their voxels.
+## Attribution
 
-### Learned guidance on the same references
+The default checkpoint was fine-tuned for 40 epochs from the official single-channel fluorescence model **2D_versatile_fluo**, using 1,482 complete manual training cells from 215 scans. Acquisition groups were kept separate across training (215), validation (73) and testing (71). Unmarked cells were ignored, not treated as negative examples. The pretrained archive SHA256 was verified against the official registry.
 
-Across the same **496 matched complete cells**, volume MAPE decreased **5.71% → 5.59%**. The paired change was −0.122 percentage points (acquisition-group bootstrap 95% interval −0.225 to −0.013). On the same **393 manual signals**, distance error was effectively unchanged (paired MAE change −0.000057 µm; 95% interval −0.001385 to +0.001144). This is a small volume improvement, not a demonstrated distance improvement or substantial overall gain, so guidance stays off by default.
+Please cite **Uwe Schmidt, Martin Weigert, Coleman Broaddus and Gene Myers. Cell Detection with Star-convex Polygons. MICCAI 2018.** [Paper](https://arxiv.org/abs/1806.03535), [DOI: 10.1007/978-3-030-00934-2_30](https://doi.org/10.1007/978-3-030-00934-2_30). [Official models](https://github.com/stardist/stardist-models). The original weights' BSD-3-Clause license is bundled at `models/cells-stardist2d/PRETRAINED-LICENSE.txt`.
 
-Test-only results (71 scans): current default **6.59% volume MAPE / 0.112 µm distance MAE**; learned guidance **6.63% / 0.115 µm**. On the same 188 test-cell references, volume MAPE improved **6.58% → 6.39%**. In the guidance comparison, baseline cell detections were reused; guidance, signal inference, filtering and physical mesh measurements were freshly executed. The 144-scan default/hybrid/consensus comparison freshly ran both detector pipelines, with consensus reusing their cell sets and rerunning signals/measurements.
+## Verification and installation
 
-Manual cell annotations are incomplete, so unmatched detections cannot establish cell precision. Validation influenced earlier model selection, and test acquisitions were previously inspected in exploratory comparisons; this is not a new blind cohort. Brush-band recognition metrics must not be interpreted as volume/distance accuracy.
+Local verification includes 220 non-integration regression tests, default-preset migration checks, all bundled checkpoint loads on CPU, synthetic cell/signal controls, and a native GUI run through the full pipeline and Imaris/Excel exports. GitHub Actions repeats CPU checks and verifies the packaged models on Linux and Windows before publishing both bundles and SHA256SUMS.txt. Native Imaris application opening is not tested.
 
-## Exports and verification
-
-Excel exports contain exactly two sheets: **Cell volumes** and **Signal distances**, with manual/NN measurements and signal channels where available. Both signal channels are processed; cells are retained when at least one accepted signal lies inside them in any channel. The pipeline creates nearest-surface B points and A–B distance lines. Imaris image data and the compatible FISH scene structure are preserved.
-
-GitHub Actions tests and loads the bundled checkpoints on Linux and Windows, verifies the packaged copies, and publishes both ZIPs plus SHA256SUMS.txt only after both builds pass. Local verification includes the masked-loss unknown-pixel gradient, annotation fill/undo/save/skip behavior, geometry/Excel checks, and a native GUI run through learned guidance, signals, filtering, measurements, Imaris/Excel export and 2D/3D display. Native Imaris opening is not covered by those checks.
-
-Detailed results and training curves are bundled under `reports/all-heldout-comparison` and `reports/annotation-boundary`; usage is in `docs/training-annotator.md` and `docs/annotation-boundary-model.md`.
+Extract your platform's ZIP and run `setup-analysis.sh` or `setup-analysis.bat`, then `run-analysis.sh` or `run-analysis.bat`. All neural checkpoints are included; no model download or training is required. Linux CUDA remains optional; CPU inference works on both platforms.

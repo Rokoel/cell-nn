@@ -32,6 +32,7 @@ class Prepared:
     previews: dict[str, np.ndarray]
     timings: dict[str, float]
     warnings: list[str] = field(default_factory=list)
+    evidence_image: np.ndarray | None = None
 
 
 @dataclass
@@ -106,7 +107,7 @@ def prepare(dataset: Dataset, config: PipelineConfig, emit=None, cancel=None, *,
         checkpoint(cancel)
         if emit:
             emit(dict(kind='stage', stage=stage, **kwargs))
-    report('Automatic channel selection', progress=5)
+    report('Using selected cell channel' if config.cell_channel is not None else 'Automatic channel selection', progress=5)
     fingerprint = hashlib.sha256()
     fingerprint.update(str(dataset.volumes[0].shape).encode())
     scores = []
@@ -118,11 +119,17 @@ def prepare(dataset: Dataset, config: PipelineConfig, emit=None, cancel=None, *,
         score.update(channel=index, name=channel.name, excitation_nm=channel.excitation_nm, metadata_hint=metadata_hint)
         score['score'] *= 1.05 if metadata_hint else 1.0
         scores.append(score)
-        report('Automatic channel selection', progress=5 + 25 * (index + 1) / len(dataset.volumes), channel_scores=scores.copy())
-    best = max(range(len(scores)), key=lambda i: scores[i]['score'])
+        report('Using selected cell channel' if config.cell_channel is not None else 'Automatic channel selection', progress=5 + 25 * (index + 1) / len(dataset.volumes), channel_scores=scores.copy())
+    if config.cell_channel is not None and config.cell_channel >= len(scores):
+        raise ValueError('Selected cell channel does not exist in this scan.')
+    from ..channel_hints import membrane_stain_channels
+    candidates=membrane_stain_channels(dataset.metadata.path,dataset.metadata.channels) or list(range(len(scores)))
+    for row in scores:
+        row['declared_membrane_candidate']=row['channel'] in candidates
+    best = config.cell_channel if config.cell_channel is not None else max(candidates, key=lambda i: scores[i]['score'])
     warnings = []
-    ranked = sorted([s['score'] for s in scores], reverse=True)
-    if ranked[0] <= 0 or (len(ranked) > 1 and ranked[0] < ranked[1] * 1.15):
+    ranked = sorted([scores[i]['score'] for i in candidates], reverse=True)
+    if config.cell_channel is None and (ranked[0] <= 0 or (len(ranked) > 1 and ranked[0] < ranked[1] * 1.15)):
         warnings.append('Automatic channel choice has weak or ambiguous ring evidence; inspect the channel-score graph and preview.')
     report('Calibrated resampling', progress=40)
     raw = normalize(dataset.volumes[best])

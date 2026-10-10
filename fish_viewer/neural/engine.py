@@ -1,6 +1,7 @@
 """StarDist runner. Only this optional worker imports TensorFlow."""
 from dataclasses import asdict, replace
 import csv
+import hashlib
 import importlib.metadata
 from itertools import product
 import json
@@ -157,7 +158,7 @@ def aggregate_subsets(rows):
     return result
 
 
-def run_neural(entries, config, output_root, mode='train', model_directory=None, emit=None, cancel=None, audit_path=None):
+def run_neural(entries, config, output_root, mode='train', model_directory=None, emit=None, cancel=None, audit_path=None, initial_model_directory=None):
     config.validate()
     if not entries or mode not in ('train','apply'):
         raise ValueError('Choose input files and train or apply mode.')
@@ -205,8 +206,10 @@ def run_neural(entries, config, output_root, mode='train', model_directory=None,
             if manifest.get('version') != 1 or manifest.get('engine') != 'stardist3d':
                 raise ValueError('Unsupported neural model manifest.')
             # Use exactly the preprocessing and geometry policy saved with training.
+            from .preprocessing import validate_manifest
+            validate_manifest(manifest)
             requested=config
-            config = replace(NeuralConfig.from_dict(manifest['config']), device=requested.device)
+            config = replace(NeuralConfig.from_dict(manifest['config']), device=requested.device, cell_channel=requested.cell_channel)
             if requested.precision_mode:
                 fields=('precision_mode','precision_max_diameter_um','membrane_support','membrane_contrast','membrane_intensity',
                     'probability_threshold','nms_threshold','min_sphericity','max_elongation','exclude_border','use_shape_filter')
@@ -256,12 +259,28 @@ def run_neural(entries, config, output_root, mode='train', model_directory=None,
                 train_n_val_patches=8, train_sample_cache=False, use_gpu=False,
                 train_checkpoint='best.weights.h5', train_checkpoint_last='last.weights.h5')
             model = StarDist3D(architecture, name='model', basedir=str(directory))
+            initialization=None
+            if initial_model_directory:
+                initial=Path(initial_model_directory).resolve()
+                initial_manifest=json.loads((initial/'fish-model.json').read_text())
+                initial_config=NeuralConfig.from_dict(initial_manifest['config'])
+                if initial_manifest.get('engine')!='stardist3d' or any(getattr(initial_config,k)!=getattr(config,k) for k in ('rays','filters')):
+                    raise ValueError('Initial StarDist checkpoint architecture differs from the new model.')
+                weights=initial/initial_manifest['checkpoint']
+                model.load_weights(weights)
+                with weights.open('rb') as stream:digest=hashlib.file_digest(stream,'sha256').hexdigest()
+                initialization=dict(model=str(initial),checkpoint_sha256=digest)
+                report['initialization']=initialization
             model.prepare_for_training()
             # Eager kernels avoid an unnecessary XLA requirement on new GPUs.
             model.keras_model.jit_compile = False
             model_manifest = dict(version=1, engine='stardist3d', config=asdict(config),
                 checkpoint='best.weights.h5', supervision='Sparse manual objects; unknown=-1; reviewed background=0',
                 runtime=device_info)
+            if initialization:model_manifest['initialization']=initialization
+            if config.preprocessing != 'none':
+                from .preprocessing import RECIPE
+                model_manifest['preprocessing_recipe']=RECIPE
             _json(model_directory/'fish-model.json', model_manifest)
             report['model_directory'] = str(model_directory)
             best_loss = float('inf')

@@ -257,7 +257,7 @@ def image_fingerprint(dataset):
     return digest.hexdigest()
 
 
-def apply(image,scene,cell_predictions,model_directory,output,device='auto',emit=lambda event:None,cancel=None):
+def apply(image,scene,cell_predictions,model_directory,output,device='auto',emit=lambda event:None,cancel=None,signal_channels=None):
     directory=new_run_directory(output, 'signal-apply')
     report=dict(version=1,engine='signal-cnn3d',mode='apply',status='running',directory=str(directory),image=str(Path(image).resolve()),
         scene=str(scene) if scene else None,cell_predictions=str(Path(cell_predictions).resolve()),model_directory=str(Path(model_directory).resolve()),
@@ -288,11 +288,14 @@ def apply(image,scene,cell_predictions,model_directory,output,device='auto',emit
         if image_fingerprint(dataset)!=metadata['fingerprint']:raise ValueError('Cell contours belong to different image pixels.')
         report['fingerprint']=metadata['fingerprint'];report['channels']=[dict(name=c.name,color=list(c.color)) for c in dataset.metadata.channels]
         images=[normalized(volume) for volume in dataset.volumes];membrane=int(metadata['channel'])
+        from ..channel_roles import signal_indices
+        selected_channels=signal_indices(len(images),membrane,signal_channels)
+        report['signal_channels']=selected_channels
         cells=native_labels(labels,metadata,dataset);spacing=np.array(dataset.spacing[::-1]);origin=np.array(dataset.center_origin)
         proposed=[]
         for channel,volume in enumerate(images):
             checkpoint(cancel);progress('Finding candidates inside neural cells',channel+1,len(images))
-            if channel==membrane:continue
+            if channel not in selected_channels:continue
             proposed.extend(dict(row,channel=channel) for row in candidates(volume,cells,spacing,origin,config))
         report['candidate_count']=len(proposed);report['threshold']=manifest['threshold'];report['membrane_channel']=membrane
         progress('Loading signal network',0,1)
@@ -307,7 +310,7 @@ def apply(image,scene,cell_predictions,model_directory,output,device='auto',emit
         report['points']=[dict(signal_id=i+1,**row) for i,row in enumerate(points)]
         report['counts']=[dict(cell_id=int(cell_id),channel=channel,channel_name=dataset.metadata.channels[channel].name,
             count=int(sum(p['cell_id']==cell_id and p['channel']==channel for p in points)))
-            for cell_id in np.unique(labels) if cell_id>0 for channel in range(len(images)) if channel!=membrane]
+            for cell_id in np.unique(labels) if cell_id>0 for channel in selected_channels]
         for name,rows,fields in [('signals',report['points'],['signal_id','cell_id','channel','x_um','y_um','z_um','score','contrast','candidate_scale_um']),
                                  ('cell-counts',report['counts'],['cell_id','channel','channel_name','count'])]:
             with (directory/f'{name}.csv').open('w',newline='') as stream:

@@ -144,14 +144,19 @@ def contour_proposals(prepared,proposals,model,config,emit=lambda e:None,cancel=
     return labels,diagnostics
 
 
-def prepare_case(case,collection,boundary_config,emit,cancel,channel_config=None):
+def prepare_case(case,collection,boundary_config,emit,cancel,channel_config=None,cell_channel=None):
     if collection:
         a=case['audit']
+        if cell_channel is not None and cell_channel != a['channel']:
+            raise ValueError('Cannot change channels in an existing cached audit.')
         return Prepared(np.load(Path(case['directory'])/'image.npy',mmap_mode='r'),
             tuple(a['spacing_zyx']),tuple(a['origin_xyz']),a['channel'],a['channel_scores'],a['fingerprint'],{},{})
     dataset=load_dataset(LibraryEntry(Path(case['image'])))
     # Preserve the channel-selection geometry used by the training audit.
     geometry=PipelineConfig(**(channel_config or dict(min_diameter_um=2.5,max_diameter_um=32.)))
+    if cell_channel is not None:
+        from dataclasses import replace
+        geometry=replace(geometry,cell_channel=cell_channel)
     def progress(event):
         # Previews are NumPy image arrays for the full viewer; this worker uses
         # JSON progress messages and the focused app already has a raw preview.
@@ -162,7 +167,7 @@ def prepare_case(case,collection,boundary_config,emit,cancel,channel_config=None
     return prepared
 
 
-def detect(model_directory,output,device='auto',emit=lambda e:None,cancel=None,image=None,audit=None,split=None,threshold=None):
+def detect(model_directory,output,device='auto',emit=lambda e:None,cancel=None,image=None,audit=None,split=None,threshold=None,cell_channel=None):
     directory=new_run_directory(output,'cell-centers')
     report=dict(version=1,engine='cell-center-box3d',mode='detect',status='running',directory=str(directory),
                 model_directory=str(Path(model_directory).resolve()),files=[])
@@ -187,7 +192,7 @@ def detect(model_directory,output,device='auto',emit=lambda e:None,cancel=None,i
         cases=[c for c in collection['cases'] if c['audit']['split']==split] if collection else [dict(image=str(Path(image).resolve()))]
         for number,case in enumerate(cases):
             checkpoint(cancel);notify(dict(kind='progress',phase='Preparing membrane image',current=number,total=len(cases),file=case['image']))
-            prepared=prepare_case(case,collection,RefinementConfig(),notify,cancel,manifest.get('channel_selection'))
+            prepared=prepare_case(case,collection,RefinementConfig(),notify,cancel,manifest.get('channel_selection'),cell_channel)
             proposals=predict_proposals(prepared,detector,config,notify,cancel)
             report['files'].append(dict(image=case['image'],split=split or 'apply',channel=prepared.channel,
                 proposals=proposals,spacing_zyx=prepared.spacing,origin_xyz=prepared.origin,fingerprint=prepared.fingerprint))
@@ -199,8 +204,16 @@ def detect(model_directory,output,device='auto',emit=lambda e:None,cancel=None,i
     emit(dict(kind='finished',report=report));return report
 
 
+def signal_supported_boxes(proposals, points, margin):
+    """Keep original boxes/seeds containing a signal within contour crop padding."""
+    xyz = np.asarray([p['xyz'] for p in points], dtype=float).reshape(-1, 3)
+    return [p for p in proposals if np.any(np.all(
+        (xyz >= np.asarray(p['box_low_xyz'])-margin) &
+        (xyz <= np.asarray(p['box_high_xyz'])+margin), axis=1))]
+
+
 def apply(model_directory,boundary_directory,output,device='auto',emit=lambda e:None,cancel=None,
-          image=None,audit=None,split=None,threshold=None,recovery=None):
+          image=None,audit=None,split=None,threshold=None,recovery=None,signal_candidates=None,cell_channel=None):
     directory=new_run_directory(output,'center-contours')
     report=dict(version=1,engine='cell-center-box3d',mode='apply',status='running',directory=str(directory),
                 model_directory=str(Path(model_directory).resolve()),boundary_model=str(Path(boundary_directory).resolve()),files=[],failures=[])
@@ -238,8 +251,21 @@ def apply(model_directory,boundary_directory,output,device='auto',emit=lambda e:
         cases=[c for c in collection['cases'] if c['audit']['split']==split] if collection else [dict(image=str(Path(image).resolve()))]
         for number,case in enumerate(cases):
             checkpoint(cancel);notify(dict(kind='progress',phase='Preparing membrane image',current=number,total=len(cases),file=case['image']))
-            prepared=prepare_case(case,collection,boundary_config,notify,cancel,manifest.get('channel_selection'))
+            prepared=prepare_case(case,collection,boundary_config,notify,cancel,manifest.get('channel_selection'),cell_channel)
             proposals=predict_proposals(prepared,detector,config,notify,cancel)
+            signal_gate = None
+            if signal_candidates:
+                scout=json.loads(Path(signal_candidates).read_text())
+                if scout['status'] != 'complete' or scout['fingerprint'] != prepared.fingerprint:
+                    raise ValueError('Signal candidates belong to a different scan or incomplete run.')
+                if scout['membrane_channel'] != prepared.channel:
+                    raise ValueError('Signal scouting and cell inference selected different membrane channels.')
+                before=len(proposals)
+                proposals=signal_supported_boxes(proposals,scout['points'],boundary_config.margin_um)
+                signal_gate=dict(report=str(Path(signal_candidates).resolve()),
+                                 candidates=len(scout['points']), boxes_before=before, boxes_kept=len(proposals),
+                                 margin_um=boundary_config.margin_um)
+                notify(dict(kind='progress',phase='Keeping signal-supported cell boxes',current=len(proposals),total=before))
             candidates={}
             labels,diagnostics=contour_proposals(prepared,proposals,boundary,boundary_config,notify,cancel,
                 manifest.get('crop_surface_evidence_threshold',.65),candidates if recovery_config else None)
@@ -267,6 +293,8 @@ def apply(model_directory,boundary_directory,output,device='auto',emit=lambda e:
                 policy='Independent padded-box target contours; failed crops rejected; no geometric fallback or roundness filter.'))
             if recovery_config:
                 metadata['cell_recovery']=dict(config=asdict(recovery_config),summary=recovery_summary)
+            if signal_gate:
+                metadata['signal_first']=signal_gate
             folder=directory/f'{number+1:04d}-{Path(case["image"]).stem}';folder.mkdir()
             path=folder/'contours.npz';np.savez_compressed(path,labels=labels,metadata=np.array(json.dumps(metadata,allow_nan=False)))
             row=dict(image=case['image'],predictions=str(path),split=split or 'apply',channel=prepared.channel,

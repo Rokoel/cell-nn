@@ -13,6 +13,8 @@ def read_model(path):
     if manifest.get('version') != 1 or manifest.get('engine') != 'stardist3d':
         raise ValueError('Choose a FISH Viewer StarDist model folder.')
     NeuralConfig.from_dict(manifest['config'])
+    from .preprocessing import validate_manifest
+    validate_manifest(manifest)
     checkpoint = path / manifest['checkpoint']
     if not checkpoint.is_file():
         raise ValueError(f'The model checkpoint is missing: {checkpoint.name}')

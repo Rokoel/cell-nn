@@ -6,8 +6,11 @@ All paths below are relative to the project folder, `/home/rokoel/Documents/cell
 
 | Model | Folder | Purpose |
 | --- | --- | --- |
+| Default fine-tuned StarDist 2D | `models/cells-stardist2d` | Single cell-channel XY polygons linked into 3D cells; [results](../reports/stardist2d/README.md) |
+| Conservative StarDist 3D | `models/cells-conservative` | Optional conservative detector |
+| Preprocessed StarDist 3D | `models/cells-preprocessed` | Optional enhanced-input detector |
 | Center/box detector | `models/proposals` | Locate cells for the focused Analysis pipeline |
-| Default surface-trained contour U-Net | `models/refinement-bias-candidate` | Default contour fine-tune; see [test results](../reports/contour-bias/README.md) |
+| Optional surface-trained contour U-Net | `models/refinement-bias-candidate` | Crop-contour fine-tune; see [test results](../reports/contour-bias/README.md) |
 | Previous best crop U-Net | `models/refinement` | Earlier default, preserved for comparison |
 | Previous conservative signal CNN | `models/signals` | Original single-scale finder and September checkpoint |
 | Experimental refreshed signal CNN | `models/signals-refreshed` | Search three spot sizes, classify crops inside the latest predicted cells; higher recall but lower test precision |
@@ -16,13 +19,9 @@ All paths below are relative to the project folder, `/home/rokoel/Documents/cell
 | Balanced StarDist | `models/cells` | Previous cell detector |
 | Previous boundary U-Net | `models/refinement-base` | Earlier boundary checkpoint |
 
-**Models and device → Use bundled center and crop models**, followed by **Use bundled signal model**, selects the default pipeline in Analysis. Browse to `models/signals-refreshed` to try the experimental signal detector. See [the signal comparison](../reports/signal-refresh/README.md) for measured results. Bundled checksums and training sources are recorded in `models/origins.json`.
+The Analysis default is **Fine-tuned StarDist 2D**, followed by the unchanged signal-center U-Net. Choose another fixed preset through **Pipeline and settings**. Analysis does not expose training buttons or model-folder pickers. The center/box and surface-loss crop models remain available through their preset; the other checkpoints are retained for reproducibility. Bundled checksums are recorded in `models/origins.json`.
 
-The October 9 surface-trained contour model is now the default. To select it manually, choose `models/refinement-bias-candidate`
-for **Models and device → Boundaries**, keeping the bundled cell detector and
-signal-center U-Net. The previous contour model remains selectable. The model also works in
-released v0.4.0; copy its complete folder, not just the weights file. See
-[contour undersizing experiments](contour-bias.md).
+The 2D checkpoint was fine-tuned from the official `2D_versatile_fluo` fluorescence model. Its BSD-3-Clause license is in the model folder. Please cite Schmidt et al., **Cell Detection with Star-convex Polygons**, MICCAI 2018, [paper](https://arxiv.org/abs/1806.03535). See [the 2D guide](stardist2d.md) for training and inference details.
 
 ## Historical StarDist runs
 

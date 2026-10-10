@@ -15,8 +15,11 @@ class PipelineConfig:
     max_elongation: float = 1.8
     exclude_border: bool = True
     method: str = 'boundary_watershed'
+    cell_channel: int | None = None
 
     def validate(self):
+        if self.cell_channel is not None and (type(self.cell_channel) is not int or self.cell_channel < 0):
+            raise ValueError('Cell channel must be a nonnegative channel index or automatic.')
         values = asdict(self)
         for key, value in values.items():
             if isinstance(value, (float, int)) and not isinstance(value, bool) and not math.isfinite(value):

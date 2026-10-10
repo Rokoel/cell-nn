@@ -23,6 +23,12 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.setStyleSheet(STYLE)
         self.off_screen = off_screen
         self.settings = settings or QtCore.QSettings('Cell NN', 'FISH Analysis')
+        try:
+            self.channel_roles=json.loads(self.settings.value('channel_roles','{}'))
+            if not isinstance(self.channel_roles,dict):self.channel_roles={}
+        except (TypeError,ValueError):
+            self.channel_roles={}
+        self._source_image=None
         self.controller = AnalysisController(self)
         self.controller.progress.connect(self.processing_progress)
         self.controller.completed.connect(self.completed)
@@ -94,7 +100,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.output_button = self._button('Browse…', lambda: self.choose_folder(self.output), row)
         left.addLayout(row)
         self.options_button = QtWidgets.QToolButton()
-        self.options_button.setText('Models and device')
+        self.options_button.setText('Pipeline and settings')
         self.options_button.setCheckable(True)
         self.options_button.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.options_button.setArrowType(QtCore.Qt.ArrowType.RightArrow)
@@ -103,89 +109,54 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         form = QtWidgets.QFormLayout(self.options)
         migrate_bundled_defaults(self.settings)
         cells, signals = default_models()
-        self.cell_model = QtWidgets.QLineEdit(self.settings.value('cell_model', default_proposal_model() or str(cells)))
-        self.cell_model.setToolTip('Choose a StarDist model or a center-and-box detector folder. The latter also requires a Boundaries model.')
-        self.signal_model = QtWidgets.QLineEdit(self.settings.value('signal_model', str(signals)))
-        self.boundary_model = QtWidgets.QLineEdit(self.settings.value('boundary_model', default_refinement_model()))
+        # Fixed model folders belong to presets; they are not model pickers.
+        self.cell_model = QtWidgets.QLineEdit(str(cells))
+        self.signal_model = QtWidgets.QLineEdit(str(signals))
+        self.boundary_model = QtWidgets.QLineEdit('')
         self.boundary_model.setPlaceholderText('Optional 3D U-Net model folder')
-        if not any((Path(self.cell_model.text()) / name).is_file() for name in ('fish-model.json', 'proposal-model.json')):
-            self.cell_model.setText(default_proposal_model() or str(cells))
-        if not (Path(self.signal_model.text()) / 'signal-model.json').is_file():
-            self.signal_model.setText(str(signals))
-        for title, field in [('Cells', self.cell_model), ('Boundaries', self.boundary_model), ('Signals', self.signal_model)]:
-            row = QtWidgets.QHBoxLayout()
-            row.addWidget(field, 1)
-            self._button('…', lambda checked=False, field=field: self.choose_folder(field), row)
-            form.addRow(title, row)
+        self.membrane_snap = QtWidgets.QCheckBox()
+        self.learned_boundary = QtWidgets.QCheckBox()
+        self.cell_recovery = QtWidgets.QCheckBox()
+        self.stardist_proposals = QtWidgets.QCheckBox()
+        self.consensus_cells = QtWidgets.QCheckBox()
+        self.learned_boundary_model = Path(__file__).resolve().parents[2] / 'models/boundary-annotations'
+        self.membrane_shift = QtWidgets.QDoubleSpinBox()
+        self.membrane_shift.setValue(.3)
+        self.pipeline = QtWidgets.QComboBox()
+        self.pipeline.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.pipeline.setMinimumContentsLength(12)
+        self.pipeline.setMinimumWidth(0)
+        self.pipeline.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,QtWidgets.QSizePolicy.Policy.Fixed)
+        for label, key in (
+            ('Fine-tuned StarDist 2D (default)', 'stardist2d'),
+            ('Conservative StarDist', 'conservative'),
+            ('Balanced StarDist (first release cells)', 'balanced'),
+            ('Preprocessed StarDist (experimental)', 'preprocessed'),
+            ('Center/box + surface-loss contours', 'crop'),
+            ('Sensitive StarDist + surface-loss contours', 'hybrid'),
+            ('Both-detector consensus', 'consensus'),
+            ('Signals first + center/box + contours (experimental)', 'signal-first'),
+        ):
+            self.pipeline.addItem(label, key)
+        self.pipeline.setToolTip('Each pipeline uses its current bundled models and the signal-center U-Net. No training is performed.')
+        form.addRow('Pipeline', self.pipeline)
+        self.pipeline.currentIndexChanged.connect(self.select_pipeline)
+        selected = self.pipeline.findData(self.settings.value('pipeline', 'stardist2d'))
+        self.pipeline.setCurrentIndex(max(0, selected))
+        self.select_pipeline()
+        self.roundness = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        self.roundness.setRange(0, 100)
+        self.roundness.setValue(int(self.settings.value('minimum_roundness_percent', 72)))
+        self.roundness.setToolTip('Minimum physical 3D sphericity. Higher values reject less round cells; 0 disables this check. Accepted contours are not reshaped.')
+        self.roundness_value = QtWidgets.QLabel()
+        self.roundness.valueChanged.connect(lambda v: self.roundness_value.setText('Off' if v == 0 else f'{v/100:.2f}'))
+        self.roundness_value.setText('Off' if self.roundness.value() == 0 else f'{self.roundness.value()/100:.2f}')
+        row = QtWidgets.QHBoxLayout(); row.addWidget(self.roundness, 1); row.addWidget(self.roundness_value)
+        form.addRow('Minimum roundness', row)
         self.device = QtWidgets.QComboBox()
         self.device.addItems(['auto', 'cpu', 'gpu'])
         self.device.setCurrentText(self.settings.value('device', 'auto'))
         form.addRow('Device', self.device)
-        self.membrane_snap = QtWidgets.QCheckBox('Snap to membrane (experimental)')
-        self.membrane_snap.setChecked(str(self.settings.value('membrane_snap', 'false')).lower() == 'true')
-        self.membrane_snap.setToolTip('Move existing contour points along surface normals toward brighter cell-channel peaks. '
-                                     'Weak or unsafe changes retain the original contour. Applies before signal detection and measurements.')
-        form.addRow(self.membrane_snap)
-        self.learned_boundary_model = Path(__file__).resolve().parents[2] / 'models/boundary-annotations'
-        self.learned_boundary = QtWidgets.QCheckBox('Learned boundary guidance (experimental)')
-        self.learned_boundary.setChecked(str(self.settings.value('learned_boundary', 'false')).lower() == 'true')
-        self.learned_boundary.setToolTip('Use the 2D boundary U-Net trained from brush annotations to guide existing 3D contours. '
-                                        'Signal detection stays unchanged. Model: ' + str(self.learned_boundary_model))
-        form.addRow(self.learned_boundary)
-        self.membrane_shift = QtWidgets.QDoubleSpinBox()
-        self.membrane_shift.setRange(.05, .6)
-        self.membrane_shift.setSingleStep(.05)
-        self.membrane_shift.setSuffix(' µm')
-        self.membrane_shift.setValue(float(self.settings.value('membrane_shift_um', .3)))
-        self.membrane_shift.setToolTip('Maximum local peak search distance in either direction. '
-                                      'The contour moves halfway toward the supported peak.')
-        self.membrane_shift.setEnabled(self.membrane_snap.isChecked() or self.learned_boundary.isChecked())
-        for checkbox in (self.membrane_snap, self.learned_boundary):
-            checkbox.toggled.connect(lambda _: self.membrane_shift.setEnabled(self.membrane_snap.isChecked() or self.learned_boundary.isChecked()))
-        form.addRow('Membrane search radius', self.membrane_shift)
-        self.cell_recovery = QtWidgets.QCheckBox('Recover missed cells (experimental)')
-        self.cell_recovery.setChecked(str(self.settings.value('cell_recovery', 'false')).lower() == 'true')
-        self.cell_recovery.setToolTip('Check local membrane contrast, retry uncertain contours, then use confident signals '
-                                     'to recheck rejected cells. Adds processing time; precision is still being evaluated.')
-        form.addRow(self.cell_recovery)
-        self.boundary_training_button = QtWidgets.QPushButton('Train boundary model…')
-        self.boundary_training_button.clicked.connect(self.train_boundaries)
-        form.addRow(self.boundary_training_button)
-        self.proposal_training_button = QtWidgets.QPushButton('Train center and box model…')
-        self.proposal_training_button.clicked.connect(self.train_proposals)
-        form.addRow(self.proposal_training_button)
-        self.bundled_cells_button = QtWidgets.QPushButton('Use bundled center and crop models')
-        self.bundled_cells_button.setEnabled(bool(default_proposal_model() and default_refinement_model()))
-        self.bundled_cells_button.clicked.connect(lambda: (
-            self.cell_model.setText(default_proposal_model()), self.boundary_model.setText(default_refinement_model())))
-        form.addRow(self.bundled_cells_button)
-        self.stardist_proposals = QtWidgets.QCheckBox('Redraw StarDist proposals')
-        self.stardist_proposals.setChecked(str(self.settings.value('stardist_proposals', 'false')).lower() == 'true')
-        self.stardist_proposals.setToolTip('Keep the saved StarDist sensitivity, use its boxes and interior seeds, then redraw with the boundary model. Failed contours are discarded.')
-        form.addRow(self.stardist_proposals)
-        self.bundled_cells_button.clicked.connect(lambda: self.stardist_proposals.setChecked(False))
-        self.hybrid_button = QtWidgets.QPushButton('Use sensitive StarDist hybrid')
-        self.hybrid_button.setToolTip('Sensitive StarDist boxes/seeds → surface-loss crop U-Net → signal-center U-Net')
-        self.hybrid_button.setEnabled(bool(sensitive_stardist_model() and default_refinement_model()))
-        self.hybrid_button.clicked.connect(lambda: (
-            self.cell_model.setText(sensitive_stardist_model()),
-            self.boundary_model.setText(default_refinement_model()),
-            self.signal_model.setText(str(default_models()[1])),
-            self.stardist_proposals.setChecked(True), self.cell_recovery.setChecked(False)))
-        form.addRow(self.hybrid_button)
-        self.consensus_cells = QtWidgets.QCheckBox('Require both cell detectors')
-        self.consensus_cells.setChecked(str(self.settings.value('consensus_cells', 'false')).lower() == 'true')
-        self.consensus_cells.setToolTip('Keep whole hybrid contours only when a center/box contour matches at IoU ≥ 0.5. Never intersect or shrink the two masks.')
-        form.addRow(self.consensus_cells)
-        self.bundled_cells_button.clicked.connect(lambda: self.consensus_cells.setChecked(False))
-        self.hybrid_button.clicked.connect(lambda: self.consensus_cells.setChecked(False))
-        self.consensus_button = QtWidgets.QPushButton('Use both-detector consensus')
-        self.consensus_button.setEnabled(self.hybrid_button.isEnabled() and bool(default_proposal_model()))
-        self.consensus_button.clicked.connect(lambda: (self.hybrid_button.click(), self.consensus_cells.setChecked(True)))
-        form.addRow(self.consensus_button)
-        self.bundled_signals_button = QtWidgets.QPushButton('Use bundled signal model')
-        self.bundled_signals_button.clicked.connect(lambda: self.signal_model.setText(str(default_models()[1])))
-        form.addRow(self.bundled_signals_button)
         left.addWidget(self.options)
         self.options.hide()
         self.options_button.toggled.connect(lambda visible: (
@@ -375,6 +346,10 @@ class AnalysisWindow(QtWidgets.QMainWindow):
             self._load(record['image'])
 
     def _load(self, image, result_path=None):
+        self._source_image=str(Path(image).resolve())
+        if result_path:
+            saved=json.loads(Path(result_path).read_text())
+            self._source_image=saved.get('source',self._source_image)
         self._generation += 1
         generation = self._generation
         self.loading = True
@@ -485,6 +460,8 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         for key, widget in [('output', self.output), ('cell_model', self.cell_model),
                             ('boundary_model', self.boundary_model), ('signal_model', self.signal_model)]:
             self.settings.setValue(key, widget.text())
+        self.settings.setValue('pipeline', self.pipeline.currentData())
+        self.settings.setValue('minimum_roundness_percent', self.roundness.value())
         self.settings.setValue('device', self.device.currentText())
         self.settings.setValue('membrane_snap', self.membrane_snap.isChecked())
         self.settings.setValue('learned_boundary', self.learned_boundary.isChecked())
@@ -494,6 +471,33 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.settings.setValue('consensus_cells', self.consensus_cells.isChecked())
         self.sync_buttons()
         self.next_scan()
+
+    def select_pipeline(self, *_):
+        self.use_conservative_cells()
+        self.signal_model.setText(str(default_models()[1]))
+        key = self.pipeline.currentData()
+        root = Path(__file__).resolve().parents[2] / 'models'
+        if key == 'preprocessed':
+            self.cell_model.setText(str(root / 'cells-preprocessed'))
+        elif key == 'stardist2d':
+            self.cell_model.setText(str(root / 'cells-stardist2d'))
+        elif key == 'balanced':
+            self.cell_model.setText(str(root / 'cells'))
+        elif key in ('crop', 'signal-first'):
+            self.cell_model.setText(default_proposal_model())
+            self.boundary_model.setText(default_refinement_model())
+        elif key in ('hybrid', 'consensus'):
+            self.cell_model.setText(sensitive_stardist_model())
+            self.boundary_model.setText(default_refinement_model())
+            self.stardist_proposals.setChecked(True)
+            self.consensus_cells.setChecked(key == 'consensus')
+
+    def use_conservative_cells(self):
+        self.cell_model.setText(str(Path(__file__).resolve().parents[2] / 'models/cells-conservative'))
+        self.boundary_model.clear()
+        for checkbox in (self.membrane_snap, self.learned_boundary, self.cell_recovery,
+                         self.stardist_proposals, self.consensus_cells):
+            checkbox.setChecked(False)
 
     def next_scan(self):
         if not self.queue:
@@ -510,13 +514,17 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.active_image = item.data(QtCore.Qt.ItemDataRole.UserRole)['image']
         item.setText('Processing · ' + Path(self.active_image).name)
         try:
+            roles=self.channel_roles.get(str(Path(self.active_image).resolve()),{})
             self.controller.start(self.active_image, self.output.text(), self.cell_model.text(),
                                   self.signal_model.text(), self.device.currentText(), self.boundary_model.text().strip() or None,
                                   membrane_snap=dict(max_shift_um=self.membrane_shift.value()) if self.membrane_snap.isChecked() or self.learned_boundary.isChecked() else None,
                                   boundary_guidance=self.learned_boundary_model if self.learned_boundary.isChecked() else None,
                                   recovery={} if self.cell_recovery.isChecked() else None,
                                   stardist_proposals=self.stardist_proposals.isChecked(),
-                                  consensus_model=default_proposal_model() if self.consensus_cells.isChecked() else None)
+                                  consensus_model=default_proposal_model() if self.consensus_cells.isChecked() else None,
+                                  roundness=self.roundness.value()/100,
+                                  signal_first=self.pipeline.currentData() == 'signal-first',
+                                  cell_channel=roles.get('cell'),signal_channels=roles.get('signals'))
         except Exception as exc:
             self.failed(str(exc))
 
@@ -534,20 +542,6 @@ class AnalysisWindow(QtWidgets.QMainWindow):
             self.stage_progress.setValue(round(fraction*1000))
             self.stage_progress.setFormat(f'{current} / {total}')
         self.statusBar().showMessage(f'{Path(self.active_image).name} · {event["phase"]}')
-
-    def train_boundaries(self):
-        from ..refinement.gui import TrainingDialog
-        dialog = TrainingDialog(self, self.output.text(), self.device.currentText())
-        dialog.model_ready.connect(self.boundary_model.setText)
-        dialog.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
-        dialog.show()
-
-    def train_proposals(self):
-        from ..refinement.gui import TrainingDialog
-        dialog = TrainingDialog(self, self.output.text(), self.device.currentText(), kind='proposals')
-        dialog.model_ready.connect(self.cell_model.setText)
-        dialog.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
-        dialog.show()
 
     def completed(self, report):
         item = self.scans.item(self.active_row)
@@ -666,13 +660,51 @@ class AnalysisWindow(QtWidgets.QMainWindow):
             self.channel_dialog.raise_()
             return
         dialog = QtWidgets.QDialog(self)
-        dialog.setWindowTitle('Channels and display')
+        dialog.setWindowTitle('Channel roles and display')
         dialog.resize(370, 620)
         layout = QtWidgets.QVBoxLayout(dialog)
+        roles_box=QtWidgets.QGroupBox('Processing roles for this scan')
+        roles_layout=QtWidgets.QVBoxLayout(roles_box)
+        note=QtWidgets.QLabel('Choose one cell channel and the signal channels. Other channels are ignored for signal detection. These choices do not change display colors.')
+        note.setWordWrap(True);roles_layout.addWidget(note)
+        self.cell_channel_choice=QtWidgets.QComboBox()
+        self.cell_channel_choice.addItem('Cell channel: automatic',None)
+        labels=[f'{c.name}' + (f' · {c.excitation_nm:g} nm' if c.excitation_nm is not None else '') for c in self.dataset.metadata.channels]
+        for i,c in enumerate(self.dataset.metadata.channels):
+            swatch=QtGui.QPixmap(12,12);swatch.fill(QtGui.QColor.fromRgbF(*c.color))
+            self.cell_channel_choice.addItem(QtGui.QIcon(swatch),f'Cell channel: {i+1} · {labels[i]}',i)
+        source=self._source_image or str(self.dataset.metadata.path.resolve())
+        saved=self.channel_roles.get(source,{})
+        self.cell_channel_choice.setCurrentIndex(max(0,self.cell_channel_choice.findData(saved.get('cell'))))
+        roles_layout.addWidget(self.cell_channel_choice)
+        self.signal_channel_checks=[]
+        names=[c.name for c in self.dataset.metadata.channels]
+        chosen=saved.get('signals')
+        if chosen is None:chosen=list(range(len(names)))
+        for i,name in enumerate(names):
+            check=QtWidgets.QCheckBox(f'Signal channel: {i+1} · {labels[i]}')
+            swatch=QtGui.QPixmap(12,12);swatch.fill(QtGui.QColor.fromRgbF(*self.dataset.metadata.channels[i].color))
+            check.setIcon(QtGui.QIcon(swatch))
+            check.setChecked(i in chosen);roles_layout.addWidget(check)
+            self.signal_channel_checks.append(check)
+        def save_roles(*_):
+            cell=self.cell_channel_choice.currentData()
+            for i,check in enumerate(self.signal_channel_checks):
+                check.setEnabled(i!=cell)
+                if i==cell:check.setChecked(False)
+            signals=[i for i,c in enumerate(self.signal_channel_checks) if c.isChecked() and i!=cell]
+            self.channel_roles[source]=dict(cell=cell,signals=signals,names=names)
+            self.settings.setValue('channel_roles',json.dumps(self.channel_roles))
+        self.cell_channel_choice.currentIndexChanged.connect(save_roles)
+        for check in self.signal_channel_checks:check.toggled.connect(save_roles)
+        for i,check in enumerate(self.signal_channel_checks):
+            if i==self.cell_channel_choice.currentData():check.setChecked(False);check.setEnabled(False)
+        roles_box.setEnabled(not self.running)
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
         body = QtWidgets.QWidget()
         channels = QtWidgets.QVBoxLayout(body)
+        channels.addWidget(roles_box)
         for i, (channel, volume) in enumerate(zip(self.dataset.metadata.channels, self.dataset.volumes)):
             panel = ChannelPanel(channel, volume, i)
             panel.changed.connect(lambda: self.refresh_timer.start())

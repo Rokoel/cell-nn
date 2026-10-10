@@ -38,7 +38,7 @@ def load(directory, device_name='auto'):
     return model, manifest, config, device
 
 
-def apply(image, scene, cell_predictions, model_directory, output, device_name='auto', emit=lambda e: None, cancel=None):
+def apply(image, scene, cell_predictions, model_directory, output, device_name='auto', emit=lambda e: None, cancel=None, signal_channels=None):
     directory = new_run_directory(output, 'signal-centers')
     report = dict(version=1, mode='apply', status='running', directory=str(directory),
         image=str(Path(image).resolve()), scene=str(scene) if scene else None,
@@ -65,7 +65,10 @@ def apply(image, scene, cell_predictions, model_directory, output, device_name='
         report['fingerprint'] = metadata['fingerprint']
         report['channels'] = [dict(name=c.name, color=list(c.color)) for c in dataset.metadata.channels]
         membrane = int(metadata['channel']); report['membrane_channel'] = membrane
-        for field, name in [('detector', 'cell_detector'), ('refinement', 'boundary_refinement'), ('membrane_snap', 'membrane_snap'), ('cell_recovery', 'cell_recovery'), ('consensus', 'cell_consensus')]:
+        from ..channel_roles import signal_indices
+        selected_channels=signal_indices(len(dataset.volumes),membrane,signal_channels)
+        report['signal_channels']=selected_channels
+        for field, name in [('detector', 'cell_detector'), ('refinement', 'boundary_refinement'), ('membrane_snap', 'membrane_snap'), ('cell_recovery', 'cell_recovery'), ('consensus', 'cell_consensus'), ('roundness_filter', 'roundness_filter'), ('signal_first', 'signal_first')]:
             if metadata.get(field): report[name] = metadata[field]
         images = [normalized(v) for v in dataset.volumes]
         origin = np.asarray(dataset.center_origin); spacing = np.asarray(dataset.spacing[::-1])
@@ -75,8 +78,8 @@ def apply(image, scene, cell_predictions, model_directory, output, device_name='
             checkpoint(cancel)
             progress('Predicting signal-center heatmaps inside cells', index, len(ids))
             crop_origin, shape, mask, membrane_image = crop_inputs(images, membrane, labels, metadata, origin, spacing, cell, boxes[cell - 1], config)
-            for channel, volume in enumerate(images):
-                if channel == membrane: continue
+            for channel in selected_channels:
+                volume=images[channel]
                 checkpoint(cancel)
                 signal = resample_crop(volume, spacing, origin, crop_origin, shape, config.spacing_um)
                 inputs = np.stack([signal, membrane_image, mask]).astype(np.float32)
@@ -89,7 +92,7 @@ def apply(image, scene, cell_predictions, model_directory, output, device_name='
         report['points'] = [dict(signal_id=i + 1, **p) for i, p in enumerate(points)]
         report['counts'] = [dict(cell_id=cell, channel=channel, channel_name=info['name'],
             count=sum(p['cell_id'] == cell and p['channel'] == channel for p in points))
-            for cell in ids for channel, info in enumerate(report['channels']) if channel != membrane]
+            for cell in ids for channel, info in enumerate(report['channels']) if channel in selected_channels]
         write_tables(directory, report)
         report['status'] = 'complete'; progress('Complete', len(points), len(points))
     except Cancelled:

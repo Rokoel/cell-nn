@@ -2,6 +2,7 @@
 import argparse
 import csv
 import json
+import hashlib
 from pathlib import Path
 import sys
 
@@ -24,10 +25,11 @@ def main():
     audit=json.loads(args.audit.read_text());report=json.loads(args.report.read_text())
     if report['status']!='complete':raise ValueError('Completed contour inference required.')
     cases={c['image']:c for c in audit['cases'] if c['audit']['split']==args.split}
-    if set(cases)!=set(r['image'] for r in report['files']):raise ValueError('All and only the chosen split required.')
+    rows=[r for r in report['files'] if r['image'] in cases]
+    if len(rows)!=len(cases) or set(cases)!=set(r['image'] for r in rows):raise ValueError('Exactly one prediction for every scan in the chosen split required.')
     sources={s['image']:s for s in audit['sources']};cells=[];scores=[];total=0
-    for number,row in enumerate(report['files'],1):
-        print(f'[{number}/{len(cases)}] Evaluate {args.split} contours: {Path(row["image"]).name}',flush=True)
+    for number,row in enumerate(rows,1):
+        if number%50==0 or number==len(cases):print(f'[{number}/{len(cases)}] Evaluate {args.split} contours: {Path(row["image"]).name}',flush=True)
         case=cases[row['image']];refs,names=read_references(Path(case['directory'])/'references.npz')
         surfaces,info=read_prediction(row['predictions']);predicted={int(s.name.rsplit(' ',1)[-1]):s for s in surfaces}
         prepared=Prepared(np.empty(case['audit']['shape_zyx'],np.uint8),tuple(info['spacing_zyx']),tuple(info['origin_xyz']),info['channel'],[],info['fingerprint'],{},{})
@@ -42,23 +44,27 @@ def main():
             if truth is None or surface_volume(truth) is None:raise ValueError('Complete closed manual reference missing.')
             mean,hd95=boundary_error(truth,predicted[cell],SurfaceLocator(truth),SurfaceLocator(predicted[cell]),surface_samples(truth))
             cells.append(dict(image=str(Path(case['image']).relative_to(ROOT)),group=case['audit']['group'],
-                manual_cell=names[ref],predicted_cell=cell,iou=match['iou'],dice=match['dice'],
+                manual_reference_id=ref+1,manual_cell=names[ref],predicted_cell=cell,iou=match['iou'],dice=match['dice'],
                 manual_volume_um3=surface_volume(truth),predicted_volume_um3=surface_volume(predicted[cell]),
                 surface_mean_error_um=mean,surface_hd95_um=hd95))
     summary=dict(scans=len(cases),complete_manual_cells=total,matched_complete_cells=len(cells),
-        annotated_cell_recall_iou_05=len(cells)/total,predicted_cells=sum(r['cells'] for r in report['files']),
+        annotated_cell_recall_iou_05=len(cells)/total,predicted_cells=sum(r.get('cells',r['metrics'].get('predicted_count',0)) for r in rows),
         mean_manual_cell_iou=float(np.mean(scores)),volume=paired_stats(cells,'manual_volume_um3','predicted_volume_um3'),
-        mean_symmetric_surface_error_um=float(np.mean([r['surface_mean_error_um'] for r in cells])),
-        mean_surface_hd95_um=float(np.mean([r['surface_hd95_um'] for r in cells])))
+        mean_symmetric_surface_error_um=float(np.mean([r['surface_mean_error_um'] for r in cells])) if cells else None,
+        mean_surface_hd95_um=float(np.mean([r['surface_hd95_um'] for r in cells])) if cells else None)
+    checkpoint_sha256=report.get('checkpoint_sha256')
+    if checkpoint_sha256 is None and report.get('model_directory'):
+        folder=Path(report['model_directory']);manifest=json.loads((folder/'fish-model.json').read_text())
+        with (folder/manifest['checkpoint']).open('rb') as stream:checkpoint_sha256=hashlib.file_digest(stream,'sha256').hexdigest()
     result=dict(status='complete',split=args.split,summary=summary,cells=cells,
-        checkpoint_sha256=report['checkpoint_sha256'],boundary_sha256=report['boundary_sha256'],
+        checkpoint_sha256=checkpoint_sha256,boundary_sha256=report.get('boundary_sha256'),source_report=str(args.report.resolve()),
         policy='Complete closed manual-cell matches at whole-cell IoU>=.5, before signal retention. All outliers included. '
         'Volumes use closed physical triangle meshes. Symmetric surface distance uses 256 area-uniform points per mesh. '
         'Sparse labels cannot establish field precision. No threshold selection in this evaluation.')
     args.output.mkdir(parents=True,exist_ok=True);_json(args.output/'report.json',result)
     fields=list(cells[0]) if cells else ['No observations']
     with (args.output/'cells.csv').open('w',newline='',encoding='utf-8') as stream:
-        w=csv.DictWriter(stream,fieldnames=fields);w.writeheader();w.writerows(cells)
+        w=csv.DictWriter(stream,fieldnames=fields,lineterminator='\n');w.writeheader();w.writerows(cells)
     book=Workbook();sheet=book.active;sheet.title='Cells';sheet.append(fields)
     for r in cells:sheet.append([r[k] for k in fields])
     sheet=book.create_sheet('Summary');sheet.append(['Metric','Value'])

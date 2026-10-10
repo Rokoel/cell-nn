@@ -27,6 +27,10 @@ def evaluate_controls(model,config):
     rows=[]
     for name,image in control_images().items():
         prepared=Prepared(image,(.3,)*3,(0.,)*3,0,[],name,{}, {})
+        if config.preprocessing != 'none':
+            from .preprocessing import membrane_connected
+            prepared.evidence_image=image
+            prepared.image=membrane_connected(image,prepared.spacing)
         case=SimpleNamespace(entry=LibraryEntry(Path(name+'.ims')),prepared=prepared,references=[],names=[],reference_cut=[])
         prediction,metrics=predict(model,case,config)
         rows.append(dict(control=name,accepted=len(prediction.cells),proposals=metrics['proposal_count'],
@@ -40,6 +44,8 @@ def check_controls(model_directory,output,device='auto',evidence_only=False):
     from .engine import runtime
     model_directory=Path(model_directory).resolve()
     manifest=json.loads((model_directory/'fish-model.json').read_text())
+    from .preprocessing import validate_manifest
+    validate_manifest(manifest)
     config=replace(NeuralConfig.from_dict(manifest['config']),device=device)
     if evidence_only:
         from .precision import evidence_preset
