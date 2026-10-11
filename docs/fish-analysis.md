@@ -30,10 +30,12 @@ runtimes; an internet connection is needed to download dependencies. The separat
 `setup-spots.sh` / `setup-spots.bat` scripts can reinstall the signal runtime. Linux supports CPU or a configured GPU environment;
 native Windows uses CPU for TensorFlow models. All model checkpoints are bundled.
 
-![Analysis displaying original manual annotations](images/analysis.png)
+![Analysis reviewing completed consensus cell contours](images/analysis.png)
 
-The screenshot shows the current application with a retained original scan,
-not generated analysis predictions.
+The screenshot shows a completed consensus analysis reopened in the current app.
+Turquoise contours are automatic predictions on the original fluorescence image;
+this example retained 20 cells and 21 signals. These counts demonstrate the workflow,
+not detection accuracy.
 
 ## Processing
 
