@@ -22,4 +22,4 @@ def configure_device_selector(selector, saved):
             selector.addItem(name, name)
         selector.setCurrentIndex(max(0, selector.findData(saved)))
         if profile is not None:
-            selector.setToolTip('CUDA libraries are bundled. Auto uses an available NVIDIA GPU and otherwise uses CPU. GPU requires a compatible system NVIDIA driver.')
+            selector.setToolTip('CUDA libraries are installed automatically on first launch. Auto uses an available NVIDIA GPU and otherwise uses CPU. GPU requires a compatible system NVIDIA driver.')

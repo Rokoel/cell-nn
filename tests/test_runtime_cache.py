@@ -117,3 +117,19 @@ def test_setup_worker_progress_and_result(tmp_path, monkeypatch):
     worker.run()
     assert worker.error is None
     assert (worker.result / item['path']).read_bytes() == b'library contents'
+
+
+def test_builder_external_runtime_roundtrip(tmp_path, monkeypatch):
+    from scripts.build_standalone import compress_runtime_libraries
+    internal = tmp_path / 'app'
+    assets = tmp_path / 'assets'
+    assets.mkdir()
+    path = internal / 'nvidia/test/lib/test.so'
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b'gpu library')
+    compress_runtime_libraries(internal, assets, 'v0.8.1')
+    assert not path.exists()
+    assert not (internal / 'runtime-libraries.tar.xz').exists()
+    monkeypatch.setenv('XDG_CACHE_HOME', str(tmp_path / 'cache'))
+    monkeypatch.setenv('FISH_RUNTIME_DOWNLOAD_DIR', str(assets))
+    assert (prepare(internal) / path.relative_to(internal)).read_bytes() == b'gpu library'

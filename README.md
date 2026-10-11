@@ -2,8 +2,9 @@
 
 Download the **single Windows EXE or Linux AppImage** from
 [GitHub Releases](https://github.com/Rokoel/cell-nn/releases/latest) to run
-FISH Analysis with bundled models and neural runtimes, without installing Python.
-The Linux AppImage includes CUDA support; the Windows EXE uses CPU inference.
+FISH Analysis with bundled models, without installing Python.
+The Linux AppImage downloads its CUDA neural runtime automatically on first launch,
+with setup progress; later launches work offline. The Windows EXE includes its CPU runtime.
 See [standalone launch instructions](docs/releasing.md).
 
 For the final automatic workflow, launch **`./run-analysis.sh`** (Linux) or
