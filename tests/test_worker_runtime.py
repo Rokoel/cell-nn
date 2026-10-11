@@ -1,3 +1,4 @@
+import os
 import sys
 
 import pytest
@@ -19,7 +20,7 @@ def test_cuda_restart_preserves_arguments_and_happens_once(monkeypatch, tmp_path
     executable, arguments, environment = calls[0]
     assert executable == sys.executable
     assert arguments == [sys.executable, '-m', 'fish_viewer.neural', '--device', 'cpu']
-    assert environment['LD_LIBRARY_PATH'] == f'{library}:/existing'
+    assert environment['LD_LIBRARY_PATH'] == f'{library}{os.pathsep}/existing'
     assert environment['FISH_CUDA_PATH_READY'] == '1'
     monkeypatch.setenv('FISH_CUDA_PATH_READY', '1')
     worker_runtime.restart_with_cuda('fish_viewer.neural')
