@@ -96,6 +96,11 @@ never loads TensorFlow and PyTorch together. `--verify-models` and `--self-test
 
 ## Test a local AppImage with original data
 
+Matching runtime parts beside the AppImage are detected automatically, including
+when launching it from the desktop. Keep the original AppImage filename so it
+can locate the matching `.runtime.part01` and `.runtime.part02` assets.
+`FISH_RUNTIME_DOWNLOAD_DIR` can override their location.
+
 Run the installed application outside the checkout, with its runtime parts beside
 the AppImage. The optional `--scan` check runs the default consensus pipeline
 through the GUI queue, verifies nonempty measurements and Imaris/Excel exports,

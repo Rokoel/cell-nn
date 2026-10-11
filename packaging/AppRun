@@ -3,6 +3,12 @@ set -eu
 APPDIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 INTERNAL="$APPDIR/usr/FISH-Analysis/_internal"
 if [ -f "$INTERNAL/runtime-cache.json" ]; then
+    # AppImage supplies its original path even when extracting into /tmp.
+    # Prefer matching offline assets beside it, without a shell override.
+    if [ -z "${FISH_RUNTIME_DOWNLOAD_DIR-}" ] && [ -n "${APPIMAGE-}" ] && [ -f "${APPIMAGE%.AppImage}.runtime.part01" ]; then
+        FISH_RUNTIME_DOWNLOAD_DIR="$(CDPATH= cd -- "$(dirname -- "$APPIMAGE")" && pwd)"
+        export FISH_RUNTIME_DOWNLOAD_DIR
+    fi
     case "${1-}" in
         --*|-m) progress="" ;;
         *) progress="--progress" ;;
