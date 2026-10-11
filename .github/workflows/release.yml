@@ -57,7 +57,7 @@ jobs:
             requirements-build.txt
       - name: Install Linux graphics libraries
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libegl1 libopengl0 libgl1 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxkbcommon-x11-0 xvfb
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libopengl0 libgl1 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxkbcommon-x11-0 xvfb xz-utils
       - name: Make room for bundled Linux CUDA libraries
         if: runner.os == 'Linux'
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc

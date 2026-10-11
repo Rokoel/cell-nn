@@ -54,7 +54,7 @@ else:
 a = Analysis([str(root / 'packaging/entry.py')], pathex=[str(root)],
              binaries=binaries, datas=datas, hiddenimports=hidden,
              excludes=['PyQt5', 'PyQt6', 'PySide2', 'tkinter', 'IPython', 'pytest',
-                       'jax', 'jaxlib', 'nvidia', 'tensorboard'],
+                       'jax', 'jaxlib', 'nvidia', 'tensorboard', 'triton'],
              noarchive=False)
 if os.name != 'nt':
     # Dependency analysis also places package libraries at the bundle root.

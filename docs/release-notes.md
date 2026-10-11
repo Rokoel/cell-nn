@@ -9,7 +9,9 @@ C++ runtime DLLs. CPU packages no longer expose an unsupported GPU option or
 restore an incompatible saved GPU selection.
 
 The AppImage uses stronger compression to fit the larger GPU runtime into a
-single GitHub release asset. `--check-runtime --device gpu` verifies a TensorFlow
+single GitHub release asset. Its first launch verifies and unpacks the embedded
+neural libraries into a reusable local cache (allow about 8 GB); there is no
+dependency download. `--check-runtime --device gpu` verifies a TensorFlow
 3D convolution and the default signal-center U-Net on CUDA in separate workers.
 GitHub Actions builds both platforms automatically and checks installed inference,
 model checkpoints, Imaris export and the single-sheet Excel export on CPU.

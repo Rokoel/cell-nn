@@ -43,6 +43,10 @@ def hide_owned_console():
 def main():
     multiprocessing.freeze_support()
     arguments = sys.argv[1:]
+    if arguments[:1] == ['--prepare-runtime']:
+        from .runtime_cache import prepare
+        print(prepare(Path(sys._MEIPASS)))
+        return 0
     if arguments[:1] == ['--check-runtime']:
         for engine in ('tensorflow', 'torch'):
             subprocess.run([sys.executable, '-m', 'fish_viewer.runtime_check',

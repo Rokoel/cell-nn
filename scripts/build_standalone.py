@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import urllib.request
 from pathlib import Path
 
@@ -16,6 +17,40 @@ APPIMAGE_URL = "https://github.com/AppImage/appimagetool/releases/download/1.9.1
 APPIMAGE_SHA256 = "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"
 RUNTIME_URL = "https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64"
 RUNTIME_SHA256 = "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"
+
+
+def compress_runtime_libraries(internal):
+    from fish_viewer.runtime_cache import cache_id
+    candidates = []
+    for path in sorted(internal.rglob('*')):
+        if not path.is_file() or path.is_symlink():
+            continue
+        name = path.relative_to(internal).as_posix()
+        if (name.startswith('nvidia/') and '.so' in path.name or
+            name.startswith('torch/lib/') and '.so' in path.name and path.stat().st_size >= 32 * 1024**2 or
+            name in ('libtensorflow_cc.so.2', 'libtensorflow_framework.so.2')):
+            with path.open('rb') as stream:
+                digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+            candidates.append(dict(path=name, size=path.stat().st_size, sha256=digest))
+    target = internal / 'runtime-libraries.tar.xz'
+    with target.open('wb') as output:
+        process = subprocess.Popen(['xz', '-T2', '-6', '--lzma2=dict=64MiB', '-c'], stdin=subprocess.PIPE, stdout=output)
+        try:
+            with tarfile.open(fileobj=process.stdin, mode='w|') as archive:
+                for item in candidates:
+                    path = internal / item['path']
+                    archive.add(path, arcname=item['path'], recursive=False)
+            process.stdin.close()
+            if process.wait() != 0:
+                raise RuntimeError('Neural runtime compression failed.')
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+    (internal / 'runtime-cache.json').write_text(json.dumps(dict(id=cache_id(candidates), files=candidates)), encoding='utf-8')
+    for item in candidates:
+        (internal / item['path']).unlink()
+    print(json.dumps({'runtime_archive_bytes': target.stat().st_size}), flush=True)
 
 
 def windows_crt():
@@ -131,6 +166,8 @@ def main():
         ]:
             shutil.copy2(ROOT / "packaging" / source, appdir / name)
         (appdir / "AppRun").chmod(0o755)
+        if args.cuda:
+            compress_runtime_libraries(appdir / 'usr/FISH-Analysis/_internal')
         tool = (
             args.appimagetool.resolve()
             if args.appimagetool
