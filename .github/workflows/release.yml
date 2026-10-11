@@ -108,7 +108,7 @@ jobs:
           cuda_args=()
           if [ "$RUNNER_OS" = Linux ]; then
             python -m pip install --no-cache-dir -r requirements-cuda-bundle.txt
-            python -m pip install --no-cache-dir --no-deps torch==2.9.1 torchvision==0.24.1 --index-url https://download.pytorch.org/whl/cu128
+            python -m pip install --no-cache-dir --no-deps torch==2.9.1+cu128 torchvision==0.24.1+cu128 --index-url https://download.pytorch.org/whl/cu128
             cuda_args=(--cuda)
           fi
           python scripts/build_standalone.py --bundle "dist/FISH-Analysis-${RELEASE_TAG}-${RELEASE_PLATFORM}" --tag "$RELEASE_TAG" "${cuda_args[@]}"

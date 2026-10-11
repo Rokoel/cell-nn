@@ -29,6 +29,7 @@ if os.environ.get('FISH_BUNDLE_CUDA') == '1':
         if not name.startswith('nvidia-') or name in seen:
             continue
         seen.add(name)
+        datas += copy_metadata(name)
         for relative in distribution.files or []:
             if relative.parts[0] != 'nvidia' or not any(part in ('lib', 'bin', 'nvvm') for part in relative.parts):
                 continue
