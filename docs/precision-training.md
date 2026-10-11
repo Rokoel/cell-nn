@@ -1,10 +1,16 @@
 # Conservative cell selection
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
+Generated arrays and historical predictions have been removed. Rebuild training
+caches before running reproduction commands; [training data](training-data.md)
+explains the retained metadata and dependency order.
+
 The priority is to reject unsupported or incorrect contours, accepting that some real cells will be missed. Automatic acceptance does not establish certainty. The viewer can also export only contours that a person has confirmed.
 
 ## Completed run
 
-The [trained model and report](../artifacts/precision-fish/training/neural-train-20260915-222552-439128/report.json) completed 120 epochs, selected epoch 119, and produced predictions for all 359 revised inputs in 16.3 minutes. It generated 4,423 accepted candidates across the collection. No inference proposal limits or processing failures occurred.
+The trained model and report (`training_metadata/precision-fish/training/neural-train-20260915-222552-439128/report.json`) completed 120 epochs, selected epoch 119, and produced predictions for all 359 revised inputs in 16.3 minutes. It generated 4,423 accepted candidates across the collection. No inference proposal limits or processing failures occurred.
 
 On the same 71 test images, using the same 198 shape-eligible complete reference annotations:
 
@@ -17,9 +23,9 @@ On the same 71 test images, using the same 198 shape-eligible complete reference
 
 This is **97.4% fewer contours with a steep recall cost**, not a measured 97.4% reduction in false positives. There are 475 predictions unmatched to any saved reference; their correctness remains unknown. Across all 505 complete test annotations, macro Dice is 0.167 and 104 are detected. The model deliberately rejects many annotated shapes or insufficiently supported membranes.
 
-See the [comparison data](../artifacts/precision-fish/comparison/comparison.json), [validation illustrations](../artifacts/precision-fish/comparison/comparison.png), and [test summary](../artifacts/precision-fish/training/neural-train-20260915-222552-439128/test-summary.csv). The six [synthetic negative controls](../artifacts/precision-fish/controls/synthetic-controls.json) all yield zero accepted contours. The network still proposes one object on a one-sided arc; the membrane gate rejects it. Those controls do not establish real-image precision.
+See the comparison data, validation illustrations, and test summary (`training_metadata/precision-fish/training/neural-train-20260915-222552-439128/test-summary.csv`). The six synthetic negative controls all yield zero accepted contours. The network still proposes one object on a one-sided arc; the membrane gate rejects it. Those controls do not establish real-image precision.
 
-Open the completed report through **Neural training… → Results → Open saved run…**. Use **Review selected cell contours…** and export confirmed contours when automatic acceptance is insufficient. [Review screenshot](../artifacts/precision-fish/review-dialog.png).
+The completed training report is archived locally; historical prediction arrays were removed. Open newly generated runs through **Neural training… → Results → Open saved run…**. Use **Review selected cell contours…** and export confirmed contours when automatic acceptance is insufficient.
 
 ## Why the excessive contours?
 
@@ -31,7 +37,7 @@ Other plausible contributors are mixed acquisition scales, ambiguous channel cho
 
 ## Revised dataset
 
-The [derived audit](../artifacts/precision-fish/audit/audit.json) excludes `18327antiLAD2.ims`, `18327antiLAD3.ims`, `18327antiLAD5.ims`, and `3AantiLADFITCTyrCy5_546.ims`, plus duplicate inputs: 11 source files representing four unique scans. Original files remain available to the viewer.
+The derived audit (`training_metadata/precision-fish/audit/audit.json`) excludes `18327antiLAD2.ims`, `18327antiLAD3.ims`, `18327antiLAD5.ims`, and `3AantiLADFITCTyrCy5_546.ims`, plus duplicate inputs: 11 source files representing four unique scans. Original files remain available to the viewer.
 
 | Split | Unique scans | Acquisition groups | Eligible complete annotations |
 | --- | ---: | ---: | ---: |
@@ -71,11 +77,11 @@ In **Results**, select an image and **Review selected cell contours…**. Three 
 ```bash
 .venv/bin/python -m fish_viewer.neural \
   --curate-audit artifacts/full-fish/audit/audit.json \
-  --settings artifacts/precision-fish/settings.json --output /path/to/new-curated-audit
+  --settings training_metadata/precision-fish/settings.json --output /path/to/new-curated-audit
 
 .venv/bin/python -m fish_viewer.neural FISH \
   --audit artifacts/precision-fish/audit/audit.json \
-  --settings artifacts/precision-fish/settings.json --output neural_runs
+  --settings training_metadata/precision-fish/settings.json --output neural_runs
 
 .venv/bin/python -m fish_viewer.neural /path/to/images --mode apply \
   --model /path/to/model --precision --output neural_runs

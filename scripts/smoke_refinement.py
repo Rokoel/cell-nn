@@ -2,10 +2,8 @@
 import argparse
 from dataclasses import replace
 import json
-import os
 from pathlib import Path
 import sys
-import sysconfig
 import tempfile
 import time
 
@@ -13,13 +11,10 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 
 
+from fish_viewer.worker_runtime import restart_with_cuda
+
 def main():
-    if sys.platform.startswith('linux') and not os.environ.get('FISH_CUDA_PATH_READY'):
-        libraries=sorted((Path(sysconfig.get_paths()['purelib'])/'nvidia').glob('*/lib'))
-        if libraries:
-            env=os.environ.copy();env['FISH_CUDA_PATH_READY']='1'
-            env['LD_LIBRARY_PATH']=os.pathsep.join(map(str,libraries))+os.pathsep+env.get('LD_LIBRARY_PATH','')
-            os.execve(sys.executable,[sys.executable,str(Path(__file__).resolve()),*sys.argv[1:]],env)
+    restart_with_cuda()
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--device',choices=['auto','cpu','gpu'],default='cpu')
     parser.add_argument('--size',type=int,default=32)

@@ -12,7 +12,6 @@ import numpy as np
 from ..models import LibraryEntry
 from ..reader import load_dataset
 from ..run_paths import new_run_directory
-from .config import PipelineConfig
 from .evaluation import aggregate, evaluate, rasterize_reference
 from .segmentation import Cancelled, Prediction, Prepared, checkpoint, prediction_surfaces, prepare, segment
 

@@ -17,12 +17,16 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--audit',type=Path,required=True);parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--initial-model',type=Path,default=ROOT/'models/cells-conservative')
+    parser.add_argument('--initial-training-report', type=Path, help='Training report with the initial checkpoint acquisition split.')
     parser.add_argument('--epochs',type=int,default=40)
     args=parser.parse_args();args.output.mkdir(parents=True,exist_ok=False)
     audit=json.loads(args.audit.read_text());manifest=read_model(args.initial_model)
     if audit['config'].get('preprocessing')!='membrane-connected-v1':raise ValueError('Completed enhanced cache required.')
-    origins=json.loads((ROOT/'models/origins.json').read_text())
-    source=Path(origins[args.initial_model.name]['source']).parent/'report.json'
+    source=args.initial_training_report
+    if source is None:
+        if args.initial_model.resolve() != (ROOT/'models/cells-conservative').resolve():
+            parser.error('A custom initial model requires --initial-training-report to verify its acquisition split.')
+        source=ROOT/'training_metadata/precision-fish/training/neural-train-20260915-222552-439128/report.json'
     old=json.loads(source.read_text())
     for split in ('training','validation','test'):
         current={c['image'] for c in audit['cases'] if c['audit']['split']==split}

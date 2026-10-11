@@ -9,6 +9,15 @@ from fish_viewer.neural.config import NeuralConfig
 from fish_viewer.neural.precision import balanced_preset, evidence_preset
 
 
+def test_bundled_models_remain_discoverable_without_historical_runs():
+    from fish_viewer.neural.model_picker import discover_models
+    from fish_viewer.project_paths import ROOT
+
+    models = dict(discover_models([ROOT / 'models']))
+    assert {path.name for path in models} == {'cells', 'cells-conservative', 'cells-sensitive', 'cells-preprocessed'}
+    assert discover_models([ROOT / 'models'])[0][0].name == 'cells'
+
+
 def saved_model(path, status='complete'):
     path.mkdir(parents=True)
     config = replace(balanced_preset(NeuralConfig()), probability_threshold=.65, membrane_support=.6)

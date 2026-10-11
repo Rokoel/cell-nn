@@ -1,5 +1,7 @@
 # Annotation-trained boundary guidance
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
 This experiment adds a small 2D U-Net trained from `training_annotations/`. The existing center/box detector, surface-loss 3D contour model and signal-center U-Net retain their weights. The new model predicts cell-membrane probability, then guides bounded movement of the existing 3D surfaces before signal detection and A–B measurement.
 
 ## Training

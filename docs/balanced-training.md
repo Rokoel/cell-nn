@@ -1,8 +1,14 @@
 # Balanced cell detection
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
+Generated arrays and historical predictions have been removed. Rebuild training
+caches before running reproduction commands; [training data](training-data.md)
+explains the retained metadata and dependency order.
+
 This run allows moderately elongated cells while keeping explicit checks for visible membrane evidence. It retains the four requested outlier exclusions and all duplicate exclusions from the conservative run, along with the same acquisition split and cached image preprocessing.
 
-The [completed run](../artifacts/balanced-fish/training/neural-train-20260918-151950-694838/report.json) trained for 150 epochs, selected epoch 150, and processed all 359 inputs in 29.3 minutes including validation-policy selection and final inference. On the same 71 test scans:
+The completed run (`training_metadata/balanced-fish/training/neural-train-20260918-151950-694838/report.json`) trained for 150 epochs, selected epoch 150, and processed all 359 inputs in 29.3 minutes including validation-policy selection and final inference. On the same 71 test scans:
 
 | Model | Contours | Complete references detected (out of 505) |
 | --- | ---: | ---: |
@@ -12,7 +18,7 @@ The [completed run](../artifacts/balanced-fish/training/neural-train-20260918-15
 
 The balanced model produces 3.31 times as many contours as the conservative model while retaining membrane checks. It detects 84/198 of the original spherical reference subset (conservative: 68/198), and 136/340 of the expanded eligible subset (conservative: 98/340). There are 1,737 predictions unmatched to any saved reference; these remain unscored, not automatically false. All six saved-checkpoint negative controls pass.
 
-See [visual comparison](../artifacts/balanced-fish/comparison/comparison.png), [common-reference metrics](../artifacts/balanced-fish/comparison/comparison.json), and [expanded-reference metrics](../artifacts/balanced-fish/expanded-target-comparison/comparison.json). The later no-roundness inference option changes acceptance only; it does not retrain this saved checkpoint or rewrite these historical results.
+Historical per-run comparison exports were removed; the archived training report retains the run metrics. The later no-roundness inference option changes acceptance only; it does not retrain this saved checkpoint or rewrite these historical results.
 
 ## Training data and settings
 
@@ -26,7 +32,7 @@ The strict run had 690 training targets. The balanced run raises the maximum pri
 
 Training starts from scratch with the same compact StarDist 3D architecture, 48³ patches, 64 rays, 16 initial filters, 200 batches per epoch, batch size one, learning rate 0.0003, and a maximum of 150 epochs. Validation loss covers every eligible validation crop; patience is 20 epochs. A fixed eight-image validation preview supplies contour graphs every ten epochs. Checkpoint selection uses validation loss.
 
-The [audit](../artifacts/balanced-fish/audit/audit.json) preserves all 3,290 reference annotations for evaluation, including cut cells and shapes outside the training limits. [Settings](../artifacts/balanced-fish/settings.json) record the initial configuration. The selected acceptance thresholds are stored in the completed model manifest and run settings.
+The audit (`training_metadata/balanced-fish/audit/audit.json`) preserves all 3,290 reference annotations for evaluation, including cut cells and shapes outside the training limits. Settings (`training_metadata/balanced-fish/settings.json`) record the initial configuration. The selected acceptance thresholds are stored in the completed model manifest and run settings.
 
 ## Acceptance selection
 
@@ -54,7 +60,7 @@ The September 18 run completed 150 epochs and selected epoch 150 by validation l
 | 0.55 / 50% | 67.45% | 3,594 |
 | 0.45 / 50% | 67.45% | 3,605 |
 
-The selected policy satisfies the declared recall target with the fewest contours. Its hemisphere threshold is 45%. The [selection report](../artifacts/balanced-fish/training/neural-train-20260918-151950-694838/acceptance-selection.json) records the complete settings and control results. The conservative model produced 1,372 contours on these same validation images; the full baseline produced 21,036.
+The selected policy satisfies the declared recall target with the fewest contours. Its hemisphere threshold is 45%. The selection report (`training_metadata/balanced-fish/training/neural-train-20260918-151950-694838/acceptance-selection.json`) records the complete settings and control results. The conservative model produced 1,372 contours on these same validation images; the full baseline produced 21,036.
 
 Contour count is a conservative selection preference, not a false-positive measurement. Existing manual references are incomplete, so real-image precision remains unknown. Blank-control success does not guarantee every real-image prediction is correct. Human contour review remains available.
 
@@ -67,12 +73,12 @@ Use **Neural training… → Choose audit…** with `artifacts/balanced-fish/aud
 ```bash
 .venv/bin/python -m fish_viewer.neural FISH \
   --audit artifacts/balanced-fish/audit/audit.json \
-  --settings artifacts/balanced-fish/settings.json --output neural_runs
+  --settings training_metadata/balanced-fish/settings.json --output neural_runs
 
 # Derive the same curated collection in a new location.
 .venv/bin/python -m fish_viewer.neural \
   --curate-audit artifacts/full-fish/audit/audit.json --balanced \
-  --settings artifacts/balanced-fish/settings.json --output /path/to/new-audit
+  --settings training_metadata/balanced-fish/settings.json --output /path/to/new-audit
 ```
 
-The [model index](models.md) links every main saved model and report. Original model folders and Imaris annotations are preserved.
+The [model index](models.md) links every main saved model and report. Bundled checkpoints and original Imaris annotations are preserved; old run folders were removed.

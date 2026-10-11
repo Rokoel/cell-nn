@@ -8,10 +8,8 @@ import argparse
 import csv
 import hashlib
 import json
-import os
 from pathlib import Path
 import sys
-import sysconfig
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +19,7 @@ from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
 from openpyxl import Workbook
 
+from fish_viewer.worker_runtime import restart_with_cuda
 from fish_viewer.models import LibraryEntry
 from fish_viewer.reader import load_dataset
 from fish_viewer.scenes import read_scene
@@ -241,12 +240,7 @@ def refresh_volumes(report, collection, cells_run):
 
 
 def main():
-    if sys.platform.startswith('linux') and not os.environ.get('FISH_CUDA_PATH_READY'):
-        libraries=sorted((Path(sysconfig.get_paths()['purelib'])/'nvidia').glob('*/lib'))
-        if libraries:
-            env=os.environ.copy();env['FISH_CUDA_PATH_READY']='1'
-            env['LD_LIBRARY_PATH']=os.pathsep.join(map(str,libraries))+os.pathsep+env.get('LD_LIBRARY_PATH','')
-            os.execve(sys.executable,[sys.executable,str(Path(__file__).resolve()),*sys.argv[1:]],env)
+    restart_with_cuda()
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--audit',type=Path,required=True)
     parser.add_argument('--cells-report',type=Path,required=True)

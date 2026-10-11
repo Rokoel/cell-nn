@@ -1,5 +1,11 @@
 # Seeded 3D U-Net boundary refinement
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
+Generated arrays and historical predictions have been removed. Rebuild training
+caches before running reproduction commands; [training data](training-data.md)
+explains the retained metadata and dependency order.
+
 This optional stage runs between StarDist cell detection and signal detection.
 The existing detector supplies cell identities and seeds. A 3D U-Net reads the
 normalized membrane image and a physical Gaussian seed, then predicts target-cell
@@ -85,3 +91,10 @@ finer-resolution cache to reuse membrane images; it is not needed in the app.
 Training writes an atomic best checkpoint, a JSON report, an epoch CSV and
 `training-progress.png`. Existing results are never overwritten. Cancel files
 and Ctrl-C are checked between preprocessing files, training batches and cells.
+
+## Preserved experiment figure
+
+![Historical experiment results](../reports/boundary-refinement/training/training-progress.png)
+
+This figure belongs to the experiment described above and uses its recorded
+cohort and settings; it does not summarize all current Analysis presets.

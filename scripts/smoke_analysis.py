@@ -14,7 +14,7 @@ if sys.platform.startswith('linux'):
     os.environ['QT_QPA_PLATFORM'] = 'xcb'
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--image', default='artifacts/imaris-compatibility/other-scans/170612_HAG50-2_Lam633m_K9546a_unannotated.ims')
+parser.add_argument('--image', default='FISH/3abx3ad_101212/141212_3ab3ad_Lam633m_dsRed543_CG488b.ims')
 parser.add_argument('--device', default='auto', choices=['auto', 'cpu', 'gpu'])
 parser.add_argument('--package-root', type=Path, help='Verify the distributed source/model bundle')
 parser.add_argument('--boundary-model', type=Path, help='Exercise the optional seeded 3D U-Net stage')
@@ -152,7 +152,6 @@ def exercise():
         assert len(nn_distances) == len(report['points'])
         assert len(nn_volumes) == len(report['cell_volumes'])
         assert np.isclose(nn_distances[0][-1], report['points'][0]['distance_um'], atol=1e-14, rtol=1e-14)
-        automatic_rows = {name: list(workbook[name].values) for name in workbook.sheetnames}
         workbook.close()
         button_path = (output / 'button-export.xlsx').resolve()
         original_dialog = QtWidgets.QFileDialog.getSaveFileName

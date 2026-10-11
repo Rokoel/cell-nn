@@ -12,6 +12,7 @@ def main(arguments=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument('--device', choices=['cpu', 'gpu', 'auto'], default='cpu')
+    parser.add_argument('--scan', type=Path, help='Also run a real scan through the GUI queue and validate its exports')
     args = parser.parse_args(arguments)
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -69,7 +70,7 @@ def main(arguments=None):
         str(output / "settings.ini"), QtCore.QSettings.Format.IniFormat
     )
     settings.setValue('device', 'gpu')
-    window = AnalysisWindow(settings=settings)
+    window = AnalysisWindow(off_screen=True, settings=settings)
     try:
         assert window.pipeline.currentData() == "consensus"
         from .runtime_profile import packaged_profile
@@ -191,6 +192,47 @@ def main(arguments=None):
                 }
             )
         )
+        if args.scan:
+            window.controller.completed.disconnect()
+            window.controller.failed.disconnect()
+            window.controller.completed.connect(window.completed)
+            window.controller.failed.connect(window.failed)
+            window.controller.progress.connect(window.processing_progress)
+            window.error = errors.append
+            window.output.setText(str(output / 'real-scan'))
+            window.device.setCurrentIndex(window.device.findData(args.device))
+            window.show()
+            window.add_paths([args.scan.resolve()])
+            deadline = time.monotonic() + 1800
+            while (window.dataset is None or window.loading or window._jobs) and not errors and time.monotonic() < deadline:
+                app.processEvents()
+                time.sleep(.02)
+            assert window.dataset is not None and not window.loading and not errors, errors
+            window.start()
+            while (window.running or window.loading or window._jobs) and time.monotonic() < deadline:
+                app.processEvents()
+                time.sleep(.02)
+            assert not window.running and not window.loading and not errors, errors
+            record = window.scans.item(0).data(QtCore.Qt.ItemDataRole.UserRole)
+            assert record['status'] == 'completed', record.get('error')
+            result = json.loads(Path(record['result']).read_text())
+            assert result['status'] == 'complete'
+            assert window.result_report['points'], 'The real scan produced no signals.'
+            assert window.result_report['cell_volumes'], 'The real scan produced no retained cells.'
+            exports = Path(record['result']).parent / 'export'
+            workbooks = list(exports.glob('*.xlsx'))
+            assert workbooks and list(exports.glob('*.ims'))
+            workbook = load_workbook(workbooks[0], read_only=True)
+            assert workbook['Measurements'].max_row > 1
+            workbook.close()
+            window.tabs.setCurrentIndex(3)
+            app.processEvents()
+            assert window.grab().save(str(output / 'packaged-results.png'))
+            window.tabs.setCurrentIndex(0)
+            window.slice_view.fit()
+            app.processEvents()
+            assert window.grab().save(str(output / 'packaged-analysis.png'))
+            print(json.dumps(dict(status='complete', real_scan=str(args.scan), cells=len(window.result_report['cell_volumes']), signals=len(window.result_report['points']), report=record['result'])))
     finally:
         window.close()
         app.processEvents()

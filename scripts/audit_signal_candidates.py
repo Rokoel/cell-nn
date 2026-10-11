@@ -9,7 +9,6 @@ import time
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 
-import numpy as np
 from fish_viewer.pipeline.runner import _json
 from fish_viewer.signals.config import SignalConfig
 from fish_viewer.signals.data import prepare_supervision,supervised_candidates

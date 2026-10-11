@@ -58,7 +58,6 @@ def main():
     axes[1].legend();axes[2].legend();fig.tight_layout();fig.savefig(args.output/'comparison.png',dpi=150);plt.close(fig)
     # Fixed-seed held-out examples; section selected at the first complete manual cell center.
     from fish_viewer.neural.audit import read_references
-    from scipy import ndimage as ndi
     audit=json.loads(Path(training['audit']).read_text())
     test=[c for c in audit['cases'] if c['audit']['split']=='test']
     example_rows={name:{r['image']:r for r in json.loads((args.run/name/'report.json').read_text())['files']} for name in ('pretrained','finetuned')}

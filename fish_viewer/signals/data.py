@@ -287,7 +287,7 @@ def build_audit(cell_report,audit_path,output,config=SignalConfig(),emit=print,c
         try:
             row=cell_rows[case['image']]
             prepared=prepare_supervision(case,sources,row,config)
-            source=prepared['source'];metadata=prepared['metadata'];dataset=prepared['dataset']
+            source=prepared['source'];dataset=prepared['dataset']
             images=prepared['images'];membrane=prepared['membrane'];origin=prepared['origin'];spacing=prepared['spacing']
             points=prepared['points'];truth=prepared['truth'];native=prepared['native'];labels=prepared['labels']
             marked=prepared['marked'];ambiguous=prepared['ambiguous'];usable=prepared['usable']

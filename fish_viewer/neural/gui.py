@@ -7,13 +7,15 @@ import time
 import uuid
 
 import numpy as np
+from ..worker_runtime import process_environment
+
 from PySide6 import QtCore, QtWidgets
 
 from ..pipeline.gui import PipelinePanel
 from ..pipeline.runner import _json
 from ..models import LibraryEntry
 from .config import NeuralConfig
-from .precision import precision_preset,balanced_preset,evidence_preset
+from .precision import balanced_preset,evidence_preset
 
 
 class NeuralPanel(PipelinePanel):
@@ -288,12 +290,7 @@ class NeuralPanel(PipelinePanel):
         self._last_stderr=''
         self.draw_scores();self.draw_preprocessing()
         self.job=QtCore.QProcess(self)
-        environment=QtCore.QProcessEnvironment.systemEnvironment()
-        environment.insert('PYTHONUNBUFFERED','1');environment.insert('OMP_NUM_THREADS','4')
-        environment.insert('MPLCONFIGDIR',str(job_dir/'matplotlib'))
-        root=Path(__file__).resolve().parents[2]
-        environment.insert('PYTHONPATH',str(root))
-        self.job.setProcessEnvironment(environment)
+        self.job.setProcessEnvironment(process_environment(job_dir))
         self.job.readyReadStandardOutput.connect(self.read_events)
         self.job.readyReadStandardError.connect(self.read_errors)
         self.job.finished.connect(self.process_finished)

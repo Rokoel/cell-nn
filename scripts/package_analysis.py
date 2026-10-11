@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import shutil
 import sys
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -28,7 +29,8 @@ def main():
     for name in ('pyproject.toml', 'run_analysis.py', 'run-analysis.sh', 'run-analysis.bat',
                  'run_annotator.py', 'run-annotator.sh', 'run-annotator.bat',
                  'run_viewer.py', 'run-viewer.sh', 'run-viewer.bat',
-                 'setup-analysis.sh', 'setup-analysis.bat', 'setup-windows-runtime.ps1', 'setup-spots.sh', 'setup-spots.bat', 'requirements-spots.txt'):
+                 'setup-analysis.sh', 'setup-analysis.bat', 'setup-windows-runtime.ps1', 'setup-spots.sh', 'setup-spots.bat',
+                 'requirements-spots.txt', 'requirements-build.txt', 'requirements-cuda-bundle.txt'):
         shutil.copy2(ROOT / name, destination / name)
     guide=(ROOT / 'docs/fish-analysis.md').read_text(encoding='utf-8')
     # This guide normally lives under docs/; make its links work from the ZIP root.
@@ -36,72 +38,13 @@ def main():
         target=match[1]
         if target.startswith('../'):
             target=target[3:]
-        elif '/' not in target and target.endswith('.md'):
+        elif not urlsplit(target).scheme and not target.startswith(('#', '/')):
             target='docs/'+target
         return ']('+target+')'
     (destination / 'README.md').write_text(re.sub(r'\]\(([^)]+)\)',guide_link,guide),encoding='utf-8')
-    (destination / 'scripts').mkdir()
-    for name in ('verify_release.py', 'package_analysis.py', 'benchmark_measurements.py', 'smoke_refinement.py',
-                 'calibrate_boundary_model.py', 'compare_refined_boundaries.py', 'audit_signal_candidates.py',
-                 'refresh_signal_data.py', 'train_refreshed_signals.py', 'compare_signal_models.py', 'calibrate_signal_model.py',
-                 'calibrate_membrane_snap.py', 'build_signal_centers.py', 'train_signal_centers.py',
-                 'evaluate_signal_centers.py', 'report_signal_centers.py', 'plot_signal_centers.py',
-                 'evaluate_center_measurements.py', 'experiment_contour_bias.py', 'train_contour_bias.py',
-                 'build_contour_bias_patches.py', 'run_contour_bias_training.py', 'run_contour_correction_control.py',
-                 'finalize_contour_bias.py', 'evaluate_contour_bias_signals.py', 'report_contour_bias.py',
-                 'plot_contour_bias_overlays.py', 'check_contour_correction.py',
-                 'train_preprocessed_stardist.py', 'finetune_preprocessed_stardist.py', 'prepare_stardist_baseline.py', 'report_preprocessed_stardist.py', 'finetune_stardist2d.py', 'report_stardist2d.py', 'apply_stardist2d.py', 'check_stardist2d_controls.py', 'benchmark_stardist2d_distances.py', 'benchmark_all_heldout.py', 'evaluate_cell_contours.py'):
-        shutil.copy2(ROOT / 'scripts' / name, destination / 'scripts' / name)
-    shutil.copy2(ROOT / 'scripts/calibrate_cell_proposals.py', destination / 'scripts/calibrate_cell_proposals.py')
-    shutil.copy2(ROOT / 'scripts/evaluate_cell_centers.py', destination / 'scripts/evaluate_cell_centers.py')
-    shutil.copy2(ROOT / 'scripts/compare_cell_pipelines.py', destination / 'scripts/compare_cell_pipelines.py')
-    shutil.copy2(ROOT / 'scripts/evaluate_cell_contours.py', destination / 'scripts/evaluate_cell_contours.py')
-    shutil.copy2(ROOT / 'scripts/check_cell_crop_controls.py', destination / 'scripts/check_cell_crop_controls.py')
-    for name in ('benchmark_all_heldout.py', 'summarize_all_heldout.py', 'plot_heldout_comparison.py',
-                 'benchmark_annotation_boundaries.py', 'summarize_annotation_boundaries.py', 'benchmark_signal_first.py',
-                 'benchmark_cell_consensus.py', 'benchmark_stardist_hybrid.py'):
-        shutil.copy2(ROOT / 'scripts' / name, destination / 'scripts' / name)
-    shutil.copy2(ROOT / 'scripts/benchmark_consensus_channels.py', destination / 'scripts/benchmark_consensus_channels.py')
-    (destination / 'docs').mkdir()
-    for name in ('fish-analysis.md', 'imaris-export.md', 'signal-detection.md', 'neural-training.md', 'models.md'):
-        shutil.copy2(ROOT / 'docs' / name, destination / 'docs' / name)
-    for name in ('measurement-accuracy.md', 'releasing.md', 'release-notes.md'):
-        if (ROOT / 'docs' / name).exists():
-            shutil.copy2(ROOT / 'docs' / name, destination / 'docs' / name)
-    if (ROOT / 'docs/boundary-refinement.md').exists():
-        shutil.copy2(ROOT / 'docs/boundary-refinement.md', destination / 'docs/boundary-refinement.md')
-    if (ROOT / 'docs/center-box-contours.md').exists():
-        shutil.copy2(ROOT / 'docs/center-box-contours.md', destination / 'docs/center-box-contours.md')
-    if (ROOT / 'docs/membrane-snap.md').exists():
-        shutil.copy2(ROOT / 'docs/membrane-snap.md', destination / 'docs/membrane-snap.md')
-    if (ROOT / 'docs/contour-bias.md').exists():
-        shutil.copy2(ROOT / 'docs/contour-bias.md', destination / 'docs/contour-bias.md')
-    if (ROOT / 'reports/contour-bias').exists():
-        shutil.copytree(ROOT / 'reports/contour-bias', destination / 'reports/contour-bias')
-    reports = ROOT / 'reports/measurement-accuracy'
-    if reports.exists():
-        shutil.copytree(reports, destination / 'reports/measurement-accuracy')
-    boundary_reports = ROOT / 'reports/boundary-refinement'
-    if boundary_reports.exists():
-        shutil.copytree(boundary_reports, destination / 'reports/boundary-refinement')
-    proposal_reports = ROOT / 'reports/center-box-contours'
-    if proposal_reports.exists():
-        shutil.copytree(proposal_reports, destination / 'reports/center-box-contours')
-    signal_reports = ROOT / 'reports/signal-refresh'
-    if signal_reports.exists():
-        shutil.copytree(signal_reports, destination / 'reports/signal-refresh')
-    membrane_reports = ROOT / 'reports/membrane-snap'
-    if membrane_reports.exists():
-        shutil.copytree(membrane_reports, destination / 'reports/membrane-snap')
-    if (ROOT / 'docs/signal-centers.md').exists():
-        shutil.copy2(ROOT / 'docs/signal-centers.md', destination / 'docs/signal-centers.md')
-    if (ROOT / 'reports/signal-centers').exists():
-        shutil.copytree(ROOT / 'reports/signal-centers', destination / 'reports/signal-centers')
-    for name in ('training-annotator', 'annotation-boundary-model', 'cell-consensus', 'stardist-hybrid'):
-        shutil.copy2(ROOT / 'docs' / (name + '.md'), destination / 'docs' / (name + '.md'))
-    for name in ('annotation-boundary', 'all-heldout-comparison', 'cell-consensus', 'stardist-hybrid', 'signal-first'):
-        shutil.copytree(ROOT / 'reports' / name, destination / 'reports' / name)
-    shutil.copytree(ROOT / 'reports/consensus-correct-channels', destination / 'reports/consensus-correct-channels')
+    for name in ('scripts', 'docs', 'reports', 'tests', 'packaging'):
+        shutil.copytree(ROOT / name, destination / name,
+                        ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     provenance = {}
     model_sources = [('cells', ROOT / 'models/cells'), ('cells-conservative', ROOT / 'models/cells-conservative'),
                      ('signals', ROOT / 'models/signals')]
@@ -142,16 +85,10 @@ def main():
     if (enhanced / 'fish-model.json').is_file():
         check_models(enhanced, signals)
         model_sources.append(('cells-preprocessed', enhanced))
-    if (ROOT / 'reports/preprocessed-stardist').exists():
-        shutil.copytree(ROOT / 'reports/preprocessed-stardist', destination / 'reports/preprocessed-stardist')
-    if (ROOT / 'docs/preprocessed-stardist.md').exists():
-        shutil.copy2(ROOT / 'docs/preprocessed-stardist.md', destination / 'docs/preprocessed-stardist.md')
     sliced = ROOT / 'models/cells-stardist2d'
     if (sliced / 'fish-model.json').is_file():
         check_models(sliced, signals)
         model_sources.append(('cells-stardist2d', sliced))
-        shutil.copy2(ROOT / 'docs/stardist2d.md', destination / 'docs/stardist2d.md')
-        shutil.copytree(ROOT / 'reports/stardist2d', destination / 'reports/stardist2d')
     for label, source in model_sources:
         target = destination / 'models' / label
         target.mkdir(parents=True)

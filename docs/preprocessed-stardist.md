@@ -1,5 +1,11 @@
 # Channel roles and membrane-preprocessed StarDist
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
+Generated arrays and historical predictions have been removed. Rebuild training
+caches before running reproduction commands; [training data](training-data.md)
+explains the retained metadata and dependency order.
+
 In FISH Analysis, select a scan, open **Channels…**, and choose its **Cell channel**
 and one or more **Signal channel** checkboxes. Unchecked channels are excluded
 from signal detection. Display visibility and brightness remain independent.
@@ -16,7 +22,7 @@ in another. Check roles before processing ambiguous scans.
 
 The **Preprocessed StarDist (experimental)** preset uses
 `models/cells-preprocessed` and the existing signal-center U-Net. It applies its
-saved preprocessing automatically. The conservative preset remains the default.
+saved preprocessing automatically. Both-detector consensus remains the Analysis default.
 For elongated cells, reduce the minimum-roundness slider or set it to zero;
 visible-membrane checks still apply. Do not preprocess inputs manually or feed enhanced images to older checkpoints.
 
@@ -43,7 +49,7 @@ are corrected using filenames and image metadata, independently of manual masks.
 The new checkpoint fine-tunes the conservative network with its 64 StarDist rays
 and a reduced learning rate. Its initialization uses exactly the same training,
 validation, and test scan sets. A separate fresh 128-ray experiment failed
-validation contour checks and was preserved without promotion. StarDist still describes star-convex
+validation contour checks and was not promoted; its training metadata remains archived. StarDist still describes star-convex
 objects: enhancement and extra rays cannot recover every deeply concave or
 branching surface. For those shapes a crop-based mask network remains a separate
 option. Compare complete manual-cell overlaps, mesh volume errors, and physical
@@ -54,3 +60,10 @@ provenance, and example images. The baseline uses the same corrected raw channel
 and existing conservative weights, so channel correction is not credited to the
 new model alone. Measurements are before signal retention and the optional app
 roundness filter. Sparse annotations cannot establish precision of all detections.
+
+## Preserved experiment figure
+
+![Historical experiment results](../reports/preprocessed-stardist/comparison.png)
+
+This figure belongs to the experiment described above and uses its recorded
+cohort and settings; it does not summarize all current Analysis presets.

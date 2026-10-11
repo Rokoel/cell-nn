@@ -3,16 +3,14 @@ import argparse
 from dataclasses import asdict
 import hashlib
 import json
-import os
 from pathlib import Path
 import sys
-import sysconfig
 import time
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 import numpy as np
-from scipy import ndimage as ndi
+from fish_viewer.worker_runtime import restart_with_cuda as restart_cuda
 from fish_viewer.neural.slices import SlicePatches, SliceView, link_sections, predict_sections
 from fish_viewer.pipeline.runner import _json,save_prediction
 
@@ -20,11 +18,6 @@ URL='https://github.com/stardist/stardist-models/releases/download/v0.1/python_2
 ARCHIVE_SHA='4ad678d0758eed6e55625f1b5ae30771e59adb79f1239e09b9772eac8846c3dd'
 
 
-def restart_cuda():
-    if sys.platform.startswith('linux') and not os.environ.get('FISH_CUDA_PATH_READY'):
-        dirs=sorted((Path(sysconfig.get_paths()['purelib'])/'nvidia').glob('*/lib'))
-        env=dict(os.environ,FISH_CUDA_PATH_READY='1',LD_LIBRARY_PATH=os.pathsep.join(map(str,dirs))+os.pathsep+os.environ.get('LD_LIBRARY_PATH',''))
-        os.execve(sys.executable,[sys.executable,*sys.argv],env)
 
 
 def augment(x,y):

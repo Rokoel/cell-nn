@@ -1,6 +1,5 @@
 from dataclasses import dataclass, replace
 from functools import lru_cache
-import json
 from pathlib import Path
 
 import numpy as np

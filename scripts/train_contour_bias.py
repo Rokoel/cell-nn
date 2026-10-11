@@ -5,16 +5,12 @@ import json
 import os
 from pathlib import Path
 import sys
-import sysconfig
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 
+from fish_viewer.worker_runtime import restart_with_cuda
+
 def main():
-    if sys.platform.startswith('linux') and not os.environ.get('FISH_CUDA_PATH_READY'):
-        libs=sorted((Path(sysconfig.get_paths()['purelib'])/'nvidia').glob('*/lib'))
-        if libs:
-            env=os.environ.copy();env['FISH_CUDA_PATH_READY']='1'
-            env['LD_LIBRARY_PATH']=os.pathsep.join(map(str,libs))+os.pathsep+env.get('LD_LIBRARY_PATH','')
-            os.execve(sys.executable,[sys.executable,str(Path(__file__).resolve()),*sys.argv[1:]],env)
+    restart_with_cuda()
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--initial-model',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
     p.add_argument('--patches',type=Path,default=ROOT/'artifacts/refinement-fish/patches')

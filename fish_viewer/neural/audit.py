@@ -1,5 +1,5 @@
 """Collection audit, calibrated caches, and acquisition-safe dataset splits."""
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import asdict
 from datetime import datetime
 import hashlib
@@ -203,6 +203,14 @@ def load_audit(path,config,directory,emit,cancel=None,training=True):
     for index,row in enumerate(report['cases'],1):
         emit(dict(kind='progress',phase='Loading audited images',current=index-1,total=len(report['cases']),file=row['image']))
         checkpoint(cancel);a=row['audit'];cache=Path(row['directory'])
+        required = ['image.npy', 'labels.npy', 'references.npz']
+        if config.preprocessing != 'none':
+            required.append('evidence.npy')
+        missing = [name for name in required if not (cache / name).is_file()]
+        if missing:
+            raise FileNotFoundError(f'Training cache is missing {", ".join(missing)} in {cache}. '
+                                    'Rebuild the arrays before training; archived audit metadata alone is insufficient. '
+                                    'See docs/training-data.md.')
         image=np.load(cache/'image.npy',mmap_mode='r');labels=np.load(cache/'labels.npy',mmap_mode='r')
         refs,names=read_references(cache/'references.npz')
         prepared=Prepared(image,tuple(a['spacing_zyx']),tuple(a['origin_xyz']),a['channel'],a['channel_scores'],a['fingerprint'],

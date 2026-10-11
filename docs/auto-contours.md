@@ -1,10 +1,16 @@
 # Automatic contours and saved reports
 
-Restart the viewer with `./run-viewer.sh FISH` to load these changes.
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
+Generated arrays and historical predictions have been removed. Rebuild training
+caches before running reproduction commands; [training data](training-data.md)
+explains the retained metadata and dependency order.
+
+Launch the Viewer with `./run-viewer.sh FISH`.
 
 1. Open a scan from the dataset list.
 2. Click **Auto-select contours…** immediately below the scan name.
-3. Choose a saved model. **Balanced collection** is listed first; **Browse…** accepts another model folder containing `fish-model.json` and its checkpoint.
+3. Choose a saved model. **Balanced StarDist 3D** is listed first; **Browse…** accepts another model folder containing `fish-model.json` and its checkpoint.
 4. Click **Auto-select contours**. The neural panel shows preprocessing, inference, and evaluation progress. When complete, it closes and the viewer loads the generated contours automatically: green borders in 2D and surface objects in 3D.
 
 Predictions and a new report are saved under the neural panel's output folder, initially `neural_runs/`. The source Imaris files remain read-only. Like the existing pipelines, this processes the first time point at full source resolution, regardless of the displayed preview resolution. It does not train a new model each time.
@@ -23,7 +29,7 @@ This does not change a saved network's learned shape preferences. The completed 
 
 ## Collection prepared for future training without shape curation
 
-Choose `artifacts/evidence-fish/audit/audit.json` in **Neural training… → Setup → Choose audit…**. This prepared audit retains all complete annotations after the four requested outlier exclusions and their aliases:
+Choose `artifacts/evidence-fish/audit/audit.json` in **Neural training… → Setup → Choose audit…**. After rebuilding, this audit retains all complete annotations after the four requested outlier exclusions and their aliases:
 
 | Split | Scans | Complete cells |
 | --- | ---: | ---: |
@@ -31,7 +37,7 @@ Choose `artifacts/evidence-fish/audit/audit.json` in **Neural training… → Se
 | Validation | 73 | 564 |
 | Test | 71 | 505 |
 
-The acquisition split and preprocessing cache are unchanged. Cut annotations remain evaluation references; unknown image regions remain ignored during training. The audit and settings are ready; a new network has **not** been trained from this audit. The latest completed model is the [balanced run](balanced-training.md).
+The archived acquisition split and settings are retained, but the preprocessing arrays must be rebuilt. Cut annotations remain evaluation references; unknown image regions remain ignored during training. The historical balanced checkpoint remains available; current Analysis presets are listed in [models](models.md).
 
 ```bash
 # Apply a model with visible-boundary checks and no roundness limits.
@@ -45,5 +51,5 @@ The acquisition split and preprocessing cache are unchanged. Cut annotations rem
 # Start a new training run using every complete cell in the prepared audit.
 .venv/bin/python -m fish_viewer.neural FISH \
   --audit artifacts/evidence-fish/audit/audit.json \
-  --settings artifacts/evidence-fish/audit/settings.json --output neural_runs
+  --settings training_metadata/evidence-fish/audit/settings.json --output neural_runs
 ```

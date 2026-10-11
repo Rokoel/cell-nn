@@ -6,7 +6,10 @@ import sys
 import time
 import uuid
 
-from PySide6 import QtCore, QtGui, QtWidgets
+from ..worker_runtime import process_environment
+from ..project_paths import bundled_model
+
+from PySide6 import QtCore, QtWidgets
 
 from ..models import LibraryEntry
 from ..neural.config import NeuralConfig
@@ -40,15 +43,7 @@ class WorkflowPanel(QtWidgets.QWidget):
         for path, title in discover_models():
             self.cell_model.addItem(title, str(path))
         self.signal_model = QtWidgets.QLineEdit()
-        manifests = sorted((root / 'artifacts/signal-fish').glob('**/signal-model.json'), key=lambda p: p.stat().st_mtime, reverse=True)
-        for path in manifests:
-            try:
-                if json.loads((path.parent.parent / 'report.json').read_text()).get('status') == 'complete':
-                    self.signal_model.setText(str(path.parent))
-                    break
-            except (OSError, ValueError):
-                continue
-        bundled_signals=root/'models/signals-center-unet'
+        bundled_signals=bundled_model('signals-center-unet')
         if (bundled_signals/'signal-model.json').is_file():
             self.signal_model.setText(str(bundled_signals))
         self.output = QtWidgets.QLineEdit(str(root / 'workflow_runs'))
@@ -247,12 +242,7 @@ class WorkflowPanel(QtWidgets.QWidget):
         self.stderr = ''
         self.finished_report = None
         self.job = QtCore.QProcess(self)
-        environment = QtCore.QProcessEnvironment.systemEnvironment()
-        environment.insert('PYTHONUNBUFFERED', '1')
-        environment.insert('PYTHONPATH', str(Path(__file__).resolve().parents[2]))
-        environment.insert('OMP_NUM_THREADS', '4')
-        environment.insert('MPLCONFIGDIR', str(self.job_dir / 'matplotlib'))
-        self.job.setProcessEnvironment(environment)
+        self.job.setProcessEnvironment(process_environment(self.job_dir))
         self.job.readyReadStandardOutput.connect(self.read_events)
         self.job.readyReadStandardError.connect(self.read_errors)
         self.job.finished.connect(self.process_finished)

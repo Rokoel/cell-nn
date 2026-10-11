@@ -49,7 +49,7 @@ def apply(cells_report, output, minimum, cancel=None):
 
 
 def main():
-    from ..neural.__main__ import Cancellation
+    from ..worker_runtime import Cancellation
     p=argparse.ArgumentParser();p.add_argument('--cells-report',type=Path,required=True)
     p.add_argument('--output',type=Path,required=True);p.add_argument('--minimum',type=float,required=True)
     p.add_argument('--cancel-file',type=Path);args=p.parse_args()

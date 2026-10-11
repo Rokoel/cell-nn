@@ -1,59 +1,55 @@
-# Saved neural models
+# Bundled models
 
-All paths below are relative to the project folder, `/home/rokoel/Documents/cell-nn` on this machine. Keep the entire `model` directory: it contains the checkpoint, architecture, preprocessing, and acceptance settings.
+[Documentation](README.md) · [Analysis guide](fish-analysis.md) · [Evaluation](evaluation.md)
 
-## Bundled models
+The current Analysis defaults are **both-detector consensus** for cells and
+**signal-center 3D U-Net** for signals. Presets select their required checkpoints
+automatically. The full Viewer also supports choosing a saved StarDist model.
 
-| Model | Folder | Purpose |
-| --- | --- | --- |
-| Default fine-tuned StarDist 2D | `models/cells-stardist2d` | Single cell-channel XY polygons linked into 3D cells; [results](../reports/stardist2d/README.md) |
-| Conservative StarDist 3D | `models/cells-conservative` | Optional conservative detector |
-| Preprocessed StarDist 3D | `models/cells-preprocessed` | Optional enhanced-input detector |
-| Center/box detector | `models/proposals` | Locate cells for the focused Analysis pipeline |
-| Optional surface-trained contour U-Net | `models/refinement-bias-candidate` | Crop-contour fine-tune; see [test results](../reports/contour-bias/README.md) |
-| Previous best crop U-Net | `models/refinement` | Earlier default, preserved for comparison |
-| Previous conservative signal CNN | `models/signals` | Original single-scale finder and September checkpoint |
-| Experimental refreshed signal CNN | `models/signals-refreshed` | Search three spot sizes, classify crops inside the latest predicted cells; higher recall but lower test precision |
-| Default direct-center U-Net | `models/signals-center-unet` | Predict a dense signal-center heatmap without the candidate finder |
-| Experimental Spotiflow | `models/signals-spotiflow` | Upstream 3D heatmap/flow network with masked FISH supervision |
-| Balanced StarDist | `models/cells` | Previous cell detector |
-| Previous boundary U-Net | `models/refinement-base` | Earlier boundary checkpoint |
+All inference checkpoints are under `models/`. They remain usable after removing
+historical runs and generated training arrays. Keep each model folder together.
 
-The Analysis default is **Both-detector consensus**: sensitive StarDist proposals are redrawn with `refinement-bias-candidate` and retained when the center/box detector agrees. The unchanged signal-center U-Net then finds signals. Fine-tuned StarDist 2D remains available as an optional preset. Choose another fixed preset through **Pipeline and settings**. Analysis does not expose training buttons or model-folder pickers. The center/box and surface-loss crop models remain available through their preset; the other checkpoints are retained for reproducibility. Bundled checksums are recorded in `models/origins.json`.
+## Cell and boundary models
 
-The 2D checkpoint was fine-tuned from the official `2D_versatile_fluo` fluorescence model. Its BSD-3-Clause license is in the model folder. Please cite Schmidt et al., **Cell Detection with Star-convex Polygons**, MICCAI 2018, [paper](https://arxiv.org/abs/1806.03535). See [the 2D guide](stardist2d.md) for training and inference details.
+| Folder | Purpose | Evidence |
+|---|---|---|
+| [`cells-sensitive`](../models/cells-sensitive/) | Sensitive StarDist 3D; consensus/hybrid input | [Full collection](full-fish-training.md), [consensus](cell-consensus.md) |
+| [`proposals`](../models/proposals/) | Cell-center and bounding-box detector | [Center/box report](../reports/center-box-contours/README.md) |
+| [`refinement-bias-candidate`](../models/refinement-bias-candidate/) | Surface-loss crop mask model used by applicable presets | [Contour-bias report](../reports/contour-bias/README.md) |
+| [`cells`](../models/cells/) | Historical balanced StarDist 3D | [Balanced training](balanced-training.md) |
+| [`cells-conservative`](../models/cells-conservative/) | Conservative StarDist 3D | [Conservative training](precision-training.md) |
+| [`cells-preprocessed`](../models/cells-preprocessed/) | Fine-tuned StarDist 3D with saved membrane preprocessing | [Preprocessing report](../reports/preprocessed-stardist/README.md) |
+| [`cells-stardist2d`](../models/cells-stardist2d/) | Fine-tuned XY StarDist with linked slices | [2D report](../reports/stardist2d/README.md) |
+| [`refinement`](../models/refinement/) | Earlier selected crop contour model | [Center/box report](../reports/center-box-contours/README.md) |
+| [`refinement-base`](../models/refinement-base/) | Earlier boundary-refinement baseline | [Boundary report](../reports/boundary-refinement/README.md) |
+| [`boundary-annotations`](../models/boundary-annotations/) | Sparse painted-boundary guidance model | [Annotation report](../reports/annotation-boundary/README.md) |
 
-## Historical StarDist runs
+These models use the TensorFlow runtime in `.venv/`. The painted-boundary folder
+also retains its development checkpoint and training report to distinguish
+held-out development scores from the final all-annotation refit.
 
-| Model | Model folder | Run report |
-| --- | --- | --- |
-| Full collection, many detections | [model](../artifacts/full-fish/training/neural-train-20260915-033619-354714/model/) | [report](../artifacts/full-fish/training/neural-train-20260915-033619-354714/report.json) |
-| Conservative, fewer detections | [model](../artifacts/precision-fish/training/neural-train-20260915-222552-439128/model/) | [report](../artifacts/precision-fish/training/neural-train-20260915-222552-439128/report.json) |
-| Balanced, September 18 run | [model](../artifacts/balanced-fish/training/neural-train-20260918-151950-694838/model/) | [report](../artifacts/balanced-fish/training/neural-train-20260918-151950-694838/report.json) |
-| Extended small pilot | [model](../artifacts/neural-extended/neural-train-20260915-025102-143388/model/) | [report](../artifacts/neural-extended/neural-train-20260915-025102-143388/report.json) |
-| Earlier 30-epoch pilot | [model](../artifacts/neural-final/neural-train-20260915-024738-944658/model/) | [report](../artifacts/neural-final/neural-train-20260915-024738-944658/report.json) |
-| Initial completed pilot | [model](../artifacts/neural-pilot/neural-train-20260915-023859-283019/model/) | [report](../artifacts/neural-pilot/neural-train-20260915-023859-283019/report.json) |
+## Signal models
 
-The full-collection baseline completed 150 epochs and selected epoch 146. The conservative model completed 120 and selected epoch 119. The balanced model completed 150 and selected epoch 150. The extended pilot completed 83 and selected epoch 73; it used only a small reference-folder split and is not equivalent to full-collection training.
+| Folder | Purpose | Runtime |
+|---|---|---|
+| [`signals-center-unet`](../models/signals-center-unet/) | Default direct signal-center 3D U-Net | PyTorch in `.venv-spots/` |
+| [`signals-spotiflow`](../models/signals-spotiflow/) | Alternative masked Spotiflow model | PyTorch/Spotiflow in `.venv-spots/` |
+| [`signals`](../models/signals/) | Original candidate CNN baseline | TensorFlow in `.venv/` |
+| [`signals-refreshed`](../models/signals-refreshed/) | Refreshed candidate CNN experiment | TensorFlow in `.venv/` |
 
-`artifacts/neural-calibrated/` contains a cancelled experiment. The first `neural-pilot` run ending `023600-864863` failed. `artifacts/full-fish/gpu-check/` and `artifacts/neural-gui-training-smoke/` contain short diagnostic models. These are preserved but are not the main models to use. A machine-readable inventory is in [model-index.json](../artifacts/model-index.json).
+See [signal-center evaluation](../reports/signal-centers/README.md) and
+[the refreshed-CNN comparison](../reports/signal-refresh/README.md).
+The separate signal environment supports inference too; deleting it disables
+the current source-app default signal detector.
 
-## Open a model
+## Provenance and historical training
 
-For the current scan, click **Auto-select contours…** below its name and choose a model. This automatically applies visible-boundary checks without roundness limits, then opens the contours. See [automatic contours and reports](auto-contours.md). For advanced controls and historical settings:
+[`models/origins.json`](../models/origins.json) retains original source locations
+and hashes. Historical source paths are provenance, not live model locations.
+Completed training reports, split definitions and settings have been archived
+locally in `training_metadata/`; generated predictions and caches were removed.
+See [training-data reconstruction](training-data.md).
 
-1. Launch `./run-viewer.sh FISH` and open **Neural training…**.
-2. Select **Apply a saved StarDist model**.
-3. **Choose model…** and select a `model` folder from the table. Its saved preprocessing and acceptance thresholds are restored automatically.
-4. Select images and run. An acceptance preset can deliberately override the saved settings afterward.
-
-To inspect training curves and existing predictions, use **Results → Open saved run…** and select the corresponding `report.json`. A running report can also be watched for live progress. The actual selected checkpoint is `best.weights.h5`; `last.weights.h5` is retained separately.
-
-See [conservative training](precision-training.md) and [balanced training](balanced-training.md) for the differences between the latest runs.
-
-## Signal detector
-
-The original [signal CNN model](../artifacts/signal-fish/training/signal-train-20260919-020312-268747/model/) and its [training report](../artifacts/signal-fish/training/signal-train-20260919-020312-268747/report.json) are separate from the cell models above. It completed 37 epochs, selected epoch 22, and uses score threshold 0.995; its bundled copy remains `models/signals`. The experimental refreshed checkpoint is `models/signals-refreshed`. Open a model through **Find signals / signal training…**, after loading neural cell contours. See the [signal guide](signal-detection.md) for validation scope, centers/counts, and exports.
-
-The [direct-center comparison](signal-centers.md) describes these optional signal
-models and the separate `setup-spots` runtime required to use them.
+Saved model thresholds and preprocessing belong to that checkpoint. Scores from
+old runs use their recorded acceptance settings and cannot automatically be
+attributed to current presets. [Evaluation](evaluation.md) explains the cohorts.

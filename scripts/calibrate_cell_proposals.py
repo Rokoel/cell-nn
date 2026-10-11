@@ -9,8 +9,6 @@ import numpy as np
 from fish_viewer.neural.audit import read_references
 from fish_viewer.pipeline.evaluation import evaluate
 from fish_viewer.pipeline.runner import _json
-from fish_viewer.workflow.volumes import surface_volume
-from fish_viewer.pipeline.runner import read_prediction
 from fish_viewer.signals.data import reference_memberships
 
 

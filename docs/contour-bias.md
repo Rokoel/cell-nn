@@ -1,5 +1,11 @@
 # Contour undersizing experiments
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
+Generated arrays and historical predictions have been removed. Rebuild training
+caches before running reproduction commands; [training data](training-data.md)
+explains the retained metadata and dependency order.
+
 The October 9 experiments preserve the released cell center/box detector and
 signal-center U-Net. They investigate where the contour is placed, using the
 existing disjoint FISH acquisition split and the same four excluded scans.
@@ -93,3 +99,10 @@ From the project root:
 Add `--beta .6` for asymmetric training or `--beta .6 --residual` for the
 correction network. All scripts preserve existing experiment directories.
 The orchestration and reporting scripts document the actual completed local run.
+
+## Preserved experiment figure
+
+![Historical experiment results](../reports/contour-bias/test-distributions.png)
+
+This figure belongs to the experiment described above and uses its recorded
+cohort and settings; it does not summarize all current Analysis presets.

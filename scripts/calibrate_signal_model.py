@@ -2,15 +2,14 @@
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import shutil
 import sys
-import sysconfig
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 import numpy as np
+from fish_viewer.worker_runtime import restart_with_cuda
 from fish_viewer.neural.engine import runtime
 from fish_viewer.signals.config import SignalConfig
 from fish_viewer.signals.engine import network,predict_patches
@@ -19,12 +18,7 @@ from fish_viewer.pipeline.runner import _json
 
 
 def main():
-    if sys.platform.startswith('linux') and not os.environ.get('FISH_CUDA_PATH_READY'):
-        libraries=sorted((Path(sysconfig.get_paths()['purelib'])/'nvidia').glob('*/lib'))
-        if libraries:
-            env=os.environ.copy();env['FISH_CUDA_PATH_READY']='1'
-            env['LD_LIBRARY_PATH']=os.pathsep.join(map(str,libraries))+os.pathsep+env.get('LD_LIBRARY_PATH','')
-            os.execve(sys.executable,[sys.executable,__file__,*sys.argv[1:]],env)
+    restart_with_cuda()
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--audit',type=Path,required=True)
     p.add_argument('--model',type=Path,required=True)

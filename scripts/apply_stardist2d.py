@@ -5,11 +5,11 @@ import json
 from pathlib import Path
 import sys
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
-from scripts.finetune_stardist2d import restart_cuda
+from fish_viewer.worker_runtime import restart_with_cuda
 
 
 def main():
-    restart_cuda()
+    restart_with_cuda()
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('scan',type=Path);p.add_argument('--model',type=Path,default=ROOT/'models/cells-stardist2d')
     p.add_argument('--output',type=Path,required=True);p.add_argument('--cell-channel',type=int,help='Zero-based channel index; otherwise infer from stain metadata and ring evidence')

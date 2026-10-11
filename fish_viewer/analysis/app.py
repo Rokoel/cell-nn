@@ -9,7 +9,8 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..app import ChannelPanel, Job, STYLE
 from ..models import LibraryEntry
-from ..reader import entry_for_path, load_dataset, scan_library
+from ..reader import ImarisReader, entry_for_path, load_dataset, scan_library
+from ..channel_hints import membrane_stain_channels
 from ..signals.overlays import read_signals
 from ..views import SliceView, VolumeView
 from ..runtime_profile import configure_device_selector
@@ -69,7 +70,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(splitter)
         self.sidebar = QtWidgets.QScrollArea()
         self.sidebar.setWidgetResizable(True)
-        self.sidebar.setMinimumWidth(285)
+        self.sidebar.setMinimumWidth(320)
         self.sidebar.setMaximumWidth(410)
         body = QtWidgets.QWidget()
         left = QtWidgets.QVBoxLayout(body)
@@ -94,6 +95,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.remove_button = self._button('Remove selected', self.remove_selected, row)
         self.select_button = self._button('Select all', self.scans.selectAll, row)
         left.addLayout(row)
+        self.retry_button = self._button('Select unfinished scans', self.select_unfinished, left)
         left.addWidget(QtWidgets.QLabel('Save results in'))
         row = QtWidgets.QHBoxLayout()
         default_output = Path(QtCore.QStandardPaths.writableLocation(QtCore.QStandardPaths.StandardLocation.DocumentsLocation)) / 'FISH Analysis'
@@ -164,6 +166,11 @@ class AnalysisWindow(QtWidgets.QMainWindow):
             self.options.setVisible(visible), self.options_button.setArrowType(
                 QtCore.Qt.ArrowType.DownArrow if visible else QtCore.Qt.ArrowType.RightArrow)))
         self.roles_button = self._button('Cell / signal channels…', self.show_channels, left)
+        self.processing_summary = QtWidgets.QLabel()
+        self.processing_summary.setWordWrap(True)
+        left.addWidget(self.processing_summary)
+        self.pipeline.currentIndexChanged.connect(self.update_processing_summary)
+        self.device.currentIndexChanged.connect(self.update_processing_summary)
         row = QtWidgets.QHBoxLayout()
         self.run_button = self._button('Analyze selected', self.start, row)
         self.run_button.setStyleSheet('background:#205e58;font-weight:bold;padding:10px;')
@@ -248,6 +255,18 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.selection_info.setWordWrap(True)
         image_layout.addWidget(self.selection_info)
         self.tabs.addTab(image_page, 'Image')
+        from .editor import AnnotationEditor
+        self.editor = AnnotationEditor(self)
+        annotation_panel = QtWidgets.QScrollArea()
+        annotation_panel.setWidgetResizable(True)
+        annotation_panel.setMinimumWidth(265)
+        annotation_panel.setWidget(self.editor)
+        self.annotation_dock = QtWidgets.QDockWidget('Annotations and editing', self)
+        self.annotation_dock.setWidget(annotation_panel)
+        self.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.annotation_dock)
+        annotation_toggle = QtWidgets.QToolButton()
+        annotation_toggle.setDefaultAction(self.annotation_dock.toggleViewAction())
+        image_layout.itemAt(0).layout().insertWidget(3, annotation_toggle)
         self.distances = self._table(['Signal', 'Cell', 'Channel', 'Distance (µm)', 'Score',
                                       'A X', 'A Y', 'A Z', 'B X', 'B Y', 'B Z', 'Note'])
         self.distances.itemSelectionChanged.connect(self.focus_measurement)
@@ -255,13 +274,20 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.tabs.addTab(self.distances, 'Distances')
         self.counts = self._table(['Cell', 'Channel', 'Channel name', 'Signals', 'Volume (µm³)'])
         self.tabs.addTab(self.counts, 'Cell counts')
+        overview = QtWidgets.QWidget()
+        overview_layout = QtWidgets.QVBoxLayout(overview)
+        self.results_overview = QtWidgets.QLabel('Analyze a scan or open a saved analysis to see results.')
+        self.results_overview.setWordWrap(True)
+        self.results_overview.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+        overview_layout.addWidget(self.results_overview)
+        self.overview_folder = self._button('Open exports folder', self.open_result_folder, overview_layout)
+        self.overview_excel = self._button('Export current measurements to Excel…', self.export_excel, overview_layout)
+        self.overview_imaris = self._button('Export edited Imaris…', self.editor.export_scene, overview_layout)
+        overview_layout.addStretch()
+        self.tabs.addTab(overview, 'Results')
         splitter.addWidget(right)
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([340, 840])
-        from .editor import AnnotationEditor
-        self.editor = AnnotationEditor(self)
-        left.insertWidget(left.count()-1, QtWidgets.QLabel('Annotations and editing'))
-        left.insertWidget(left.count()-1, self.editor)
         self.statusBar().showMessage('Original scans are read-only; export saves edited copies.')
 
     @staticmethod
@@ -277,8 +303,13 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         return table
 
     def sync_buttons(self):
+        self.update_processing_summary()
+        self.overview_folder.setEnabled(self.result_path is not None)
+        editable = self.dataset is not None and not self.loading and not self.running
+        self.overview_excel.setEnabled(editable)
+        self.overview_imaris.setEnabled(editable)
         for widget in (self.add_button, self.folder_button, self.remove_button, self.select_button,
-                       self.scans, self.output, self.output_button, self.options, self.saved_button):
+                       self.scans, self.retry_button, self.output, self.output_button, self.options, self.saved_button):
             widget.setEnabled(not self.running)
         self.run_button.setEnabled(not self.running and not self.loading and self.scans.count() > 0)
         self.cancel_button.setEnabled(self.running)
@@ -287,6 +318,73 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.editor.setEnabled(self.dataset is not None and not self.loading and not self.running)
         for widget in (self.roles_button, self.channels_button, self.fit_button, self.mode, self.axis, self.slice):
             widget.setEnabled(self.dataset is not None and not self.running and not self.loading)
+
+    def channel_summary(self, record):
+        if record.get('metadata_error'):
+            return 'Cannot read channel metadata', True
+        channels = record.get('channels', [])
+        roles = self.channel_roles.get(str(Path(record['image']).resolve()), {})
+        cell = roles.get('cell')
+        signals = roles.get('signals')
+        candidates = membrane_stain_channels(record['image'], channels)
+        warning = None
+        if cell is None:
+            cell_text = 'automatic' + (f' (declared channel {candidates[0]+1})' if len(candidates) == 1 else '')
+            if len(candidates) != 1:
+                warning = 'Check channels: automatic cell assignment needs review'
+        else:
+            cell_text = str(cell + 1)
+            if cell >= len(channels):
+                warning = 'Check channels: selected cell channel is missing'
+        signal_text = 'automatic (non-cell channels)' if signals is None else ', '.join(str(i+1) for i in signals)
+        if signals is not None and (not signals or any(i >= len(channels) or i == cell for i in signals)):
+            warning = 'Check channels: choose valid signal channels'
+        if len(channels) < 2:
+            warning = 'Check channels: at least two channels are needed'
+        return warning or f'Cell: {cell_text}; signals: {signal_text}', bool(warning)
+
+    def refresh_scan_item(self, item):
+        record = item.data(QtCore.Qt.ItemDataRole.UserRole)
+        roles, warning = self.channel_summary(record)
+        state = record.get('status', 'pending').capitalize()
+        badge = ' · Check channels' if warning else ''
+        item.setText(f'{state}{badge} · {Path(record["image"]).name}')
+        item.setToolTip(record['image'] + '\n' + roles + ('\n' + record['error'] if record.get('error') else ''))
+        item.setForeground(QtGui.QBrush(QtGui.QColor('#e9b85f' if warning or state == 'Failed' else '#d8e3ed')))
+
+    def set_scan_status(self, item, status, error=None):
+        record = item.data(QtCore.Qt.ItemDataRole.UserRole)
+        record['status'] = status
+        record['error'] = error
+        item.setData(QtCore.Qt.ItemDataRole.UserRole, record)
+        self.refresh_scan_item(item)
+
+    def update_processing_summary(self, *_):
+        roles = 'Add a scan to review channel roles.'
+        item = self.scans.currentItem()
+        if item:
+            roles = self.channel_summary(item.data(QtCore.Qt.ItemDataRole.UserRole))[0]
+        self.processing_summary.setText(f'{self.pipeline.currentText()}\nDevice: {self.device.currentText()}\n{roles}')
+
+    def update_results_overview(self, report):
+        sections = []
+        for name, points, cells in (
+            ('Program', report.get('points', []), report.get('cell_volumes', [])),
+            ('Manual', report.get('manual_measurements', {}).get('points', []), report.get('manual_measurements', {}).get('cells', [])),
+        ):
+            distances = [p['distance_um'] for p in points if p.get('distance_um') is not None and np.isfinite(p['distance_um'])]
+            text = f'{name}: {len(cells)} cells · {len(points)} signals · {len(distances)} measured distances'
+            if distances:
+                text += f'\nA → B distance (µm): median {np.median(distances):.4f}; mean {np.mean(distances):.4f}; range {min(distances):.4f}–{max(distances):.4f}'
+            sections.append(text)
+        filtering = report.get('signal_filter', {})
+        if 'removed_cell_count' in filtering:
+            sections.append(f'{filtering["removed_cell_count"]} cells without signals removed.')
+        if self.result_path:
+            sections.append(f'Saved analysis: {self.result_path.parent}\nExports: {self.result_path.parent / "export"}')
+        else:
+            sections.append('Current annotations; export to save a copy.')
+        self.results_overview.setText('\n\n'.join(sections))
 
     def choose_folder(self, field):
         path = QtWidgets.QFileDialog.getExistingDirectory(self, 'Choose folder', field.text())
@@ -319,11 +417,19 @@ class AnalysisWindow(QtWidgets.QMainWindow):
             entries = []
             for path in paths:
                 entries.extend(scan_library(path)[0] if Path(path).is_dir() else [entry_for_path(path)])
-            return sorted({(str(e.image.resolve()),str(e.scene.resolve()) if e.scene else None) for e in entries}, key=lambda e:e[0])
+            discovered = sorted({(str(e.image.resolve()), str(e.scene.resolve()) if e.scene else None) for e in entries}, key=lambda e: e[0])
+            checked = []
+            for image, scene in discovered:
+                try:
+                    channels = ImarisReader(image).metadata.channels
+                    checked.append((image, scene, channels, None))
+                except Exception as exc:
+                    checked.append((image, scene, [], str(exc)))
+            return checked
         def done(paths):
             known = {(r['image'],r.get('scene')) for r in (self.scans.item(i).data(QtCore.Qt.ItemDataRole.UserRole) for i in range(self.scans.count()))}
             first = None
-            for path, scene in paths:
+            for path, scene, channels, problem in paths:
                 if (path,scene) in known:
                     continue
                 known.add((path,scene))
@@ -331,7 +437,8 @@ class AnalysisWindow(QtWidgets.QMainWindow):
                 if scene and Path(scene).stem!=Path(path).stem: label+=' · '+Path(scene).name
                 item = QtWidgets.QListWidgetItem(label)
                 item.setToolTip(path)
-                item.setData(QtCore.Qt.ItemDataRole.UserRole, dict(image=path, scene=scene))
+                item.setData(QtCore.Qt.ItemDataRole.UserRole, dict(image=path, scene=scene, channels=channels, status='pending', metadata_error=problem))
+                self.refresh_scan_item(item)
                 self.scans.addItem(item)
                 if first is None:
                     first = item
@@ -345,6 +452,11 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         for item in self.scans.selectedItems():
             self.scans.takeItem(self.scans.row(item))
         self.sync_buttons()
+
+    def select_unfinished(self):
+        for row in range(self.scans.count()):
+            item = self.scans.item(row)
+            item.setSelected(item.data(QtCore.Qt.ItemDataRole.UserRole).get('status') != 'completed')
 
     def scan_selected(self, item, previous=None):
         if item is None or self.running:
@@ -462,6 +574,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.distances.blockSignals(False)
         self.refresh_annotations()
         self.editor.set_dataset(dataset, report, cached)
+        self.update_processing_summary()
 
     def start(self):
         if self.running or self.loading:
@@ -474,6 +587,9 @@ class AnalysisWindow(QtWidgets.QMainWindow):
             self.error('Select at least one scan.')
             return
         self.queue = [self.scans.row(item) for item in items]
+        for row in self.queue:
+            self.set_scan_status(self.scans.item(row), 'pending')
+        self.batch_failures = 0
         self.total_scans = len(self.queue)
         self.scan_number = 0
         self.running = True
@@ -528,7 +644,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         if not self.queue:
             self.running = False
             self.timer.stop()
-            self.phase.setText('Analysis complete')
+            self.phase.setText(f'Analysis finished · {self.batch_failures} failed' if self.batch_failures else 'Analysis complete')
             self.overall.setValue(self.overall.maximum())
             self.overall.setFormat('Complete')
             self.sync_buttons()
@@ -537,7 +653,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         item = self.scans.item(self.active_row)
         self.scan_number += 1
         self.active_image = item.data(QtCore.Qt.ItemDataRole.UserRole)['image']
-        item.setText('Processing · ' + Path(self.active_image).name)
+        self.set_scan_status(item, 'running')
         try:
             roles=self.channel_roles.get(str(Path(self.active_image).resolve()),{})
             self.controller.start(self.active_image, self.output.text(), self.cell_model.text(),
@@ -573,7 +689,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         record = item.data(QtCore.Qt.ItemDataRole.UserRole)
         record['result'] = report['report_path']
         item.setData(QtCore.Qt.ItemDataRole.UserRole, record)
-        item.setText('✓ ' + Path(record['image']).name)
+        self.set_scan_status(item, 'completed')
         self.stage_progress.setRange(0, 1000)
         self.stage_progress.setValue(1000)
         self.stage_progress.setFormat('Saved')
@@ -581,15 +697,15 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         QtCore.QTimer.singleShot(0, self.next_scan)
 
     def failed(self, message):
-        self.queue.clear()
-        self.running = False
-        self.timer.stop()
-        self.phase.setText('Analysis failed')
-        if hasattr(self, 'active_row'):
-            self.scans.item(self.active_row).setText('Failed · ' + Path(self.active_image).name)
+        if not self.running:
+            self.error(message)
+            return
+        self.batch_failures += 1
+        self.set_scan_status(self.scans.item(self.active_row), 'failed', message)
+        self.phase.setText('Scan failed; continuing with the remaining scans.')
         self.stage_progress.setRange(0, 1000)
-        self.sync_buttons()
-        self.error(message)
+        self.statusBar().showMessage(str(message)[-1000:])
+        QtCore.QTimer.singleShot(0, self.next_scan)
 
     def cancelled(self):
         self.queue.clear()
@@ -598,7 +714,7 @@ class AnalysisWindow(QtWidgets.QMainWindow):
         self.phase.setText('Cancelled — completed results were kept.')
         self.stage_progress.setRange(0, 1000)
         if hasattr(self, 'active_row'):
-            self.scans.item(self.active_row).setText('Cancelled · ' + Path(self.active_image).name)
+            self.set_scan_status(self.scans.item(self.active_row), 'cancelled')
         self.sync_buttons()
 
     def cancel(self):
@@ -720,6 +836,9 @@ class AnalysisWindow(QtWidgets.QMainWindow):
             signals=[i for i,c in enumerate(self.signal_channel_checks) if c.isChecked() and i!=cell]
             self.channel_roles[source]=dict(cell=cell,signals=signals,names=names)
             self.settings.setValue('channel_roles',json.dumps(self.channel_roles))
+            for row in range(self.scans.count()):
+                self.refresh_scan_item(self.scans.item(row))
+            self.update_processing_summary()
         self.cell_channel_choice.currentIndexChanged.connect(save_roles)
         for check in self.signal_channel_checks:check.toggled.connect(save_roles)
         for i,check in enumerate(self.signal_channel_checks):

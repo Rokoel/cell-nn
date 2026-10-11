@@ -4,20 +4,13 @@ import json
 import os
 from pathlib import Path
 import signal
-import sys
-import sysconfig
 
-from ..neural.__main__ import Cancellation
+from ..worker_runtime import Cancellation, restart_with_cuda
 from .config import ProposalConfig
 
 
 def main():
-    if sys.platform.startswith('linux') and not os.environ.get('FISH_CUDA_PATH_READY'):
-        libraries=sorted((Path(sysconfig.get_paths()['purelib'])/'nvidia').glob('*/lib'))
-        if libraries:
-            env=os.environ.copy();env['FISH_CUDA_PATH_READY']='1'
-            env['LD_LIBRARY_PATH']=os.pathsep.join(map(str,libraries))+os.pathsep+env.get('LD_LIBRARY_PATH','')
-            os.execve(sys.executable,[sys.executable,'-m','fish_viewer.proposals',*sys.argv[1:]],env)
+    restart_with_cuda('fish_viewer.proposals')
     p=argparse.ArgumentParser(description='Tiny 3D cell-center/box detector and crop contour pipeline.')
     p.add_argument('--mode',choices=['train','detect','apply','recover'],required=True);p.add_argument('--audit',type=Path)
     p.add_argument('--recovery-config',type=Path)

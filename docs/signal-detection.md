@@ -1,5 +1,11 @@
 # Signal detection inside neural cell contours
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
+Generated arrays and historical predictions have been removed. Rebuild training
+caches before running reproduction commands; [training data](training-data.md)
+explains the retained metadata and dependency order.
+
 The signal network finds **signal centers**, reports counts per cell and channel, and saves a classifier score for each detection. An experimental refreshed checkpoint uses training crops from the latest center/box detector and cropped U-Net cell masks. It increased test recall but also false detections. Since v0.4.0, the default is the newer [direct signal-center U-Net](signal-centers.md); this guide documents the preserved candidate-CNN approach. Original images and Imaris annotations remain unchanged.
 
 ## Use the trained model
@@ -36,10 +42,10 @@ The increased false-detection rate conflicts with the preference for confident d
 
 The following results describe the September checkpoint and its original balanced StarDist cell masks. They use a different eligible reference cohort from the refreshed center/box + U-Net benchmark, so they should not be used as a direct before/after comparison.
 
-- [Model folder](../artifacts/signal-fish/training/signal-train-20260919-020312-268747/model/), including `signal-model.json` and `best.weights.h5`.
-- [Training report](../artifacts/signal-fish/training/signal-train-20260919-020312-268747/report.json), [compact summary](../artifacts/signal-fish/training/signal-train-20260919-020312-268747/summary.json), and [per-scan test scores](../artifacts/signal-fish/training/signal-train-20260919-020312-268747/test-by-scan.csv).
-- [Training graphs](../artifacts/signal-fish/training/signal-train-20260919-020312-268747/training.png) and [representative review crops](../artifacts/signal-fish/training/signal-train-20260919-020312-268747/review-crops.png).
-- [Saved-checkpoint negative controls](../artifacts/signal-fish/controls/controls.json).
+- [Model folder](../models/signals/), including `signal-model.json` and `best.weights.h5`.
+- Training report (`training_metadata/signal-fish/training/signal-train-20260919-020312-268747/report.json`), compact summary (`training_metadata/signal-fish/training/signal-train-20260919-020312-268747/summary.json`), and per-scan test scores (`training_metadata/signal-fish/training/signal-train-20260919-020312-268747/test-by-scan.csv`).
+- Historical training graphs and review crops were removed; current release evidence remains under `reports/`.
+- Current model verification reruns synthetic negative controls; historical artifact copies were removed.
 
 Training stopped after **37 epochs**, selecting **epoch 22** by class-balanced validation cross-entropy. The network has 139,761 parameters. Threshold selection used validation acquisitions only, choosing the most recall among tested thresholds reaching at least 90% precision and five detections. The selected score threshold is **0.995**.
 
@@ -68,7 +74,7 @@ The table below records the original September audit. The refreshed audit and co
 | Validation | 73 | 699 | 591 | 255 | 218 | 4,596 |
 | Test | 71 | 645 | 473 | 144 | 116 | 2,742 |
 
-The [signal audit](../artifacts/signal-fish/audit/audit.json) covers all **359 retained scans**. It uses the saved balanced model's neural contours; manual contours delimit where exhaustive signal annotations justify negative supervision. Manual cell surfaces are never substituted for neural contours as the detection domain.
+The signal audit (`training_metadata/signal-fish/audit/audit.json`) covers all **359 retained scans**. It uses the saved balanced model's neural contours; manual contours delimit where exhaustive signal annotations justify negative supervision. Manual cell surfaces are never substituted for neural contours as the detection domain.
 
 For each A marker, the audit compares local peak contrast against a surrounding shell in non-membrane channels. Low-evidence or ambiguous channel assignments exclude their affected manual cells from supervision. This prevents uncertain assignments from becoming false negative labels. The records retain all markers, assignments, exclusions, and points that fall outside neural contours. A small physical tolerance associates near-boundary A points with manual annotations, but acceptance inside a neural cell uses the actual discrete cell mask with **no erosion or required boundary gap**.
 

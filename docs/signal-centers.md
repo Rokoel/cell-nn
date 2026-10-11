@@ -1,5 +1,11 @@
 # Direct signal-center detectors
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
+Generated arrays and historical predictions have been removed. Rebuild training
+caches before running reproduction commands; [training data](training-data.md)
+explains the retained metadata and dependency order.
+
 Two signal detectors predict centers directly from a dense 3D heatmap:
 
 - `models/signals-center-unet`: a small 3D U-Net (199,993 parameters).
@@ -43,7 +49,9 @@ On Windows substitute `.venv-spots\Scripts\python.exe`. The original FISH data a
 See the [Spotiflow training documentation](https://weigertlab.org/spotiflow/train.html) and [source](https://github.com/weigertlab/spotiflow) for the upstream architecture. Our masked adapter is in [the training module](../fish_viewer/spots/training.py).
 
 For a fresh Spotiflow run the code now uses bfloat16 on CUDA automatically.
-To reproduce the recovery from the retained original checkpoint:
+The original recovery checkpoint was a historical run output and was removed.
+The selected final checkpoint remains in `models/signals-spotiflow`. The command
+below describes recovery after regenerating an original training run:
 
 ```bash
 .venv-spots/bin/python scripts/train_signal_centers.py --index artifacts/signal-centers/data/index.json --engine signal-spotiflow3d --initial-model artifacts/signal-centers/spotiflow-training/model --learning-rate .0001 --output artifacts/signal-centers/spotiflow-training-recovered

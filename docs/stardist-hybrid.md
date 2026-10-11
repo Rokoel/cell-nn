@@ -1,5 +1,7 @@
 # Sensitive StarDist proposals with surface-loss contours
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
 The focused app now has a **Use sensitive StarDist hybrid** preset under
 **Models and device**. It selects the original sensitive StarDist, the current
 surface-loss crop U-Net and the signal-center U-Net. The current default remains
@@ -86,7 +88,7 @@ source image bytes. Imaris itself and Windows were not run in this environment.
 The test suite passed 182 tests with six optional-dependency tests skipped.
 
 Results: [summary](../reports/stardist-hybrid/summary.json). Full per-scan runs and
-measurements are in `artifacts/stardist-hybrid-validation-20261009-211225`.
+measurements are in the historical run folder (removed during cleanup).
 Reproduce with `.venv/bin/python scripts/benchmark_stardist_hybrid.py` and
 `FISH_SPOTS_PYTHON` set to the PyTorch environment's Python executable.
 `--resume RUN_DIRECTORY` reuses completed runs. The full audit and original

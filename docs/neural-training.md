@@ -1,12 +1,18 @@
 # StarDist 3D training
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
+Generated arrays and historical predictions have been removed. Rebuild training
+caches before running reproduction commands; [training data](training-data.md)
+explains the retained metadata and dependency order.
+
 The viewer now has a **Neural training…** panel for training and applying a real StarDist 3D network. TensorFlow runs in a separate process, so training does not block the viewer or share its OpenGL context. Models and predictions are saved separately from the source Imaris files.
 
-For the current workflow, see [automatic contours and reports](auto-contours.md). GUI defaults now require visible boundaries without roundness or elongation limits. The completed [balanced model](balanced-training.md) and stricter [conservative model](precision-training.md) retain their historical settings. Both use revised exclusions, membrane checks, clear progress and human review. The [full FISH baseline](full-fish-training.md) documents the broader audit. The settings and single-image results below describe the original small pilot.
+For the current workflow, see [automatic contours and reports](auto-contours.md). GUI defaults now require visible boundaries without roundness or elongation limits. The completed [balanced model](balanced-training.md) and stricter [conservative model](precision-training.md) retain their historical settings. Both use revised exclusions, membrane checks, clear progress and human review. The [full FISH baseline](full-fish-training.md) documents the broader audit. Training recipes below describe sparse supervision; use each model's saved settings when reproducing a particular experiment.
 
 ## Start
 
-On this Linux machine the dependencies are installed. Launch `./run-viewer.sh FISH`, open **Neural training…**, and select **Train StarDist 3D + validate + test**. The original pilot used at most 150 epochs, 40 batches per epoch, batch size 1, 32 × 64 × 64 voxel patches, 64 rays, and 16 initial feature channels. Prefer **Choose audit…** with the current curated collection to restore its full training configuration.
+After installing the [source runtimes](fish-analysis.md#installation), Launch `./run-viewer.sh FISH`, open **Neural training…**, and select **Train StarDist 3D + validate + test**. The original pilot used at most 150 epochs, 40 batches per epoch, batch size 1, 32 × 64 × 64 voxel patches, 64 rays, and 16 initial feature channels. Rebuild the audited collection first, then use **Choose audit…** to restore its training configuration.
 
 - **Setup:** choose files/folders, device, physical cell limits, patch size, learning rate, and stopping settings.
 - **Live scores:** training/validation total loss, validation Dice/IoU, detection rate, and matched-cell boundary RMSE. Contour curves use complete reference cells. Full-volume validation is measured initially and every five epochs by default.
@@ -16,30 +22,12 @@ On this Linux machine the dependencies are installed. Launch `./run-viewer.sh FI
 
 Use **Open saved run…** to load `report.json`. Its model folder is selected automatically. Choose **Apply a saved StarDist model** to process additional files using that model's saved preprocessing, threshold, and shape settings. **Load settings…** and **Save settings…** operate on neural settings JSON files. New training starts from random weights; weight checkpoints currently support inference, not continuation of optimizer state through the GUI.
 
-## Completed reference experiment
+## Bundled baselines and reports
 
-The trained run is saved in [`artifacts/neural-extended/neural-train-20260915-025102-143388/`](../artifacts/neural-extended/neural-train-20260915-025102-143388/). Open its [`report.json`](../artifacts/neural-extended/neural-train-20260915-025102-143388/report.json) in the panel to inspect the graphs, use its model, or open the existing predictions without retraining.
-
-The run trained on ten complete disjoint cells from two `101212` images. It used seven usable training-style validation objects from `131212`; full-volume validation scores additionally include other saved reference meshes. Training stopped after 83 epochs, selecting epoch 73 by validation loss. The validation threshold sweep selected probability 0.50. The full run took approximately two minutes on the RTX 5060 Ti after CUDA kernels were cached. A preceding 30-epoch pilot had poor detection; the longer fit supports the current default training budget.
-
-On the reserved `141212` scan:
-
-| Metric | Classical contours | StarDist 3D |
-| --- | ---: | ---: |
-| Complete-cell mean Dice (7 references) | 0.204 | **0.736** |
-| Complete cells detected, IoU ≥ 0.5 | 2 / 7 | **7 / 7** |
-| All-reference mean Dice (10 references) | 0.227 | **0.720** |
-| All references detected, IoU ≥ 0.5 | 3 / 10 | **8 / 10** |
-| Complete matched-cell boundary RMSE | 0.522 µm | **0.393 µm** |
-| Total predicted contours | 222 | 647 |
-
-The comparison uses the same test image, calibrated grid, reference meshes, diameter/sphericity/elongation filters, and edge policy (edge exclusion off). Classical threshold and smoothing settings come from the preceding tuning run, with no additional tuning. Each method retains its own preprocessing. Missed cells receive zero overlap; boundary RMSE only covers matched cells and therefore has a different denominator between methods. Raw measurements and classical prediction overlays are saved in [`comparison.json`](../artifacts/neural-extended/neural-train-20260915-025102-143388/comparison.json).
-
-**This does not establish precision:** 637 neural predictions have no matched manual reference and remain unscored. They may include both valid unannotated cells and false detections. Seven complete test cells are too few for a strong generalization claim, and this acquisition was already inspected during earlier development. The next useful annotation work is to review representative predicted cells and add explicitly reviewed background regions, then evaluate on a fresh acquisition.
-
-![Training and validation curves](../artifacts/neural-extended/neural-train-20260915-025102-143388/training.png)
-
-![Comparison using common physical filters](../artifacts/neural-extended/neural-train-20260915-025102-143388/comparison.png)
+The [model inventory](models.md) lists the retained balanced, conservative,
+sensitive and experimental checkpoints. [Evaluation](evaluation.md) points to
+bundled report deliverables. Old pilot model folders and prediction overlays
+were removed; archived training reports document the selected release models.
 
 ## Supervision and preprocessing
 

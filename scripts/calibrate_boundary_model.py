@@ -1,11 +1,8 @@
 """Select the mask cutoff from complete validation-cell crops, never test crops."""
 import argparse
-from dataclasses import replace
 import json
-import os
 from pathlib import Path
 import sys
-import sysconfig
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
@@ -13,13 +10,10 @@ import numpy as np
 from scipy import ndimage as ndi
 
 
+from fish_viewer.worker_runtime import restart_with_cuda
+
 def main():
-    if sys.platform.startswith('linux') and not os.environ.get('FISH_CUDA_PATH_READY'):
-        libraries=sorted((Path(sysconfig.get_paths()['purelib'])/'nvidia').glob('*/lib'))
-        if libraries:
-            env=os.environ.copy();env['FISH_CUDA_PATH_READY']='1'
-            env['LD_LIBRARY_PATH']=os.pathsep.join(map(str,libraries))+os.pathsep+env.get('LD_LIBRARY_PATH','')
-            os.execve(sys.executable,[sys.executable,str(Path(__file__).resolve()),*sys.argv[1:]],env)
+    restart_with_cuda()
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--model',type=Path,required=True);parser.add_argument('--patches',type=Path,required=True)
     parser.add_argument('--output',type=Path,required=True);parser.add_argument('--device',default='gpu',choices=['auto','cpu','gpu'])

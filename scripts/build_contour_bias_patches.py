@@ -16,17 +16,21 @@ from fish_viewer.pipeline.runner import _json
 
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',type=Path,required=True)
+    p.add_argument('--audit', type=Path, default=ROOT/'artifacts/refinement-fish/audit/audit.json')
+    p.add_argument('--patch-index', type=Path, default=ROOT/'training_metadata/refinement-fish/patches/index.json')
+    p.add_argument('--baseline-reports', type=Path, nargs='+', default=[
+        ROOT/'training_metadata/signal-refresh/training-contours/center-contours-20261007-070644-473469-tdz4ceh5/report.json',
+        ROOT/'training_metadata/proposal-fish/validation-contours-final/center-contours-20261007-055507-430727-vlcnm8p3/report.json'])
     args=p.parse_args()
     if args.output.exists():p.error('Preserve existing caches; choose a new output')
     args.output.mkdir(parents=True)
     config=RefinementConfig(**read_model(ROOT/'models/refinement')['config'])
-    collection=json.loads((ROOT/'artifacts/refinement-fish/audit/audit.json').read_text())
+    collection=json.loads(args.audit.read_text())
     cases={c['image']:c for c in collection['cases']}
-    original=json.loads((ROOT/'artifacts/refinement-fish/patches/index.json').read_text())
+    original=json.loads(args.patch_index.read_text())
     baseline_files=[]
-    for name in ('artifacts/signal-refresh/training-contours/center-contours-20261007-070644-473469-tdz4ceh5/report.json',
-                 'artifacts/proposal-fish/validation-contours-final/center-contours-20261007-055507-430727-vlcnm8p3/report.json'):
-        baseline_files+=json.loads((ROOT/name).read_text())['files']
+    for path in args.baseline_reports:
+        baseline_files+=json.loads(path.read_text())['files']
     rows={r['image']:r for r in baseline_files}
     shape=(len(original['records']),)+(config.patch_size,)*3
     arrays={k:np.lib.format.open_memmap(args.output/(k+'.npy'),mode='w+',shape=shape,dtype=d)

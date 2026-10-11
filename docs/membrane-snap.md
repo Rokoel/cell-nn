@@ -1,5 +1,7 @@
 # Local membrane refinement
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
 FISH Analysis can optionally refine the best bundled center/box + cropped 3D U-Net contours using the existing cell-channel image. Open **Models and device**, enable **Snap to membrane (experimental)**, and analyze a scan. This option is off by default. It does not retrain or replace either neural model.
 
 For each existing cell, the step constructs a closed surface, estimates local outward normals, and searches in both directions for brighter membrane peaks. By default the search extends 0.30 µm and each point moves halfway toward its supported peak: at most 0.15 µm before voxel rasterization. The peak search uses 0.10 µm Gaussian smoothing, local brightness/prominence requirements and a preference for nearby peaks. Displacements are smoothed locally without forcing a rounded or convex shape. Some points can move inward where the original contour was too large.

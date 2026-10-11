@@ -16,7 +16,7 @@ from ..neural.engine import runtime
 from ..pipeline.runner import _json
 from ..pipeline.segmentation import checkpoint,Cancelled
 from .config import SignalConfig
-from .data import normalized,native_labels,candidates,extract_patches,candidate_targets
+from .data import normalized,native_labels,candidates,extract_patches
 from .evaluation import evaluate_cases,select_threshold,suppress,detection_separation,evaluate_points,summarize
 
 

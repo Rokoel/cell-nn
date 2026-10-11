@@ -1,5 +1,11 @@
 # Training on the full FISH collection
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
+Generated arrays and historical predictions have been removed. Rebuild training
+caches before running reproduction commands; [training data](training-data.md)
+explains the retained metadata and dependency order.
+
 This is the completed baseline. For the revised exclusions, conservative acceptance and review workflow, see [conservative training](precision-training.md).
 
 The baseline completed 150 epochs, selected epoch 146, and reached complete-test macro Dice 0.790 / IoU 0.664, detecting 445 of 505 complete annotations at IoU ≥ 0.5. It produced 22,009 test contours, of which 21,367 were unscored against partial references. Precision is unknown.
@@ -22,17 +28,17 @@ The collection audit covers every existing Imaris image under `FISH`, including 
 
 All 392 existing images have one time point. The audit reads every native-resolution channel, chooses a channel automatically, records calibration and source fingerprints, and rasterizes the saved meshes. Different scenes for the same image are combined; identical voxelized reference masks are deduplicated. Identical normalized inputs with the same calibrated grid are consolidated, preserving additional annotations from their aliases. Counts refer to saved annotations; overlapping annotations can describe closely related or alternative cell boundaries.
 
-The four absent images are listed in the audit. No image-read or annotation-processing errors occurred for the existing files. Representative previews, including ambiguous selections and legacy scans, are saved in [channel-review.png](../artifacts/full-fish/channel-review.png); the confidence flags remain in the exported image table.
+The four absent images are listed in the audit. No image-read or annotation-processing errors occurred for the existing files. Historical channel-review previews were removed; confidence flags remain in the archived image table.
 
 Audit artifacts:
 
-- [audit.json](../artifacts/full-fish/audit/audit.json): sources, aliases, acquisition components, parameters, complete/cut counts, and preprocessing warnings.
-- [source-files.csv](../artifacts/full-fish/audit/source-files.csv): one row per existing source image, including duplicates and companion scenes.
-- [images.csv](../artifacts/full-fish/audit/images.csv): one row per distinct input, selected channel, split, and annotation counts.
-- [annotations.csv](../artifacts/full-fish/audit/annotations.csv): one row per reference, physical shape measurements, cut status, and training eligibility.
-- [folders.csv](../artifacts/full-fish/audit/folders.csv): counts by folder.
-- [shape-audit.json](../artifacts/full-fish/audit/shape-audit.json): complete reference shapes relative to the prediction filters.
-- [strongly-overlapping-references.csv](../artifacts/full-fish/audit/strongly-overlapping-references.csv): 40 annotation pairs with IoU above 0.5, including 22 above 0.9 that may be alternative boundaries for the same cell. These remain within their acquisition component; annotation counts do not imply that all biological cells are independent.
+- audit.json (`training_metadata/full-fish/audit/audit.json`): sources, aliases, acquisition components, parameters, complete/cut counts, and preprocessing warnings.
+- source-files.csv (`training_metadata/full-fish/audit/source-files.csv`): one row per existing source image, including duplicates and companion scenes.
+- images.csv (`training_metadata/full-fish/audit/images.csv`): one row per distinct input, selected channel, split, and annotation counts.
+- annotations.csv (`training_metadata/full-fish/audit/annotations.csv`): one row per reference, physical shape measurements, cut status, and training eligibility.
+- folders.csv (`training_metadata/full-fish/audit/folders.csv`): counts by folder.
+- shape-audit.json (`training_metadata/full-fish/audit/shape-audit.json`): complete reference shapes relative to the prediction filters.
+- strongly-overlapping-references.csv (`training_metadata/full-fish/audit/strongly-overlapping-references.csv`): 40 annotation pairs with IoU above 0.5, including 22 above 0.9 that may be alternative boundaries for the same cell. These remain within their acquisition component; annotation counts do not imply that all biological cells are independent.
 
 ## Split and supervision
 
@@ -58,7 +64,7 @@ Crops are read lazily from memory-mapped arrays. Validation loss covers every us
 
 Inference processes blocks with a 32-voxel context halo and disjoint central regions. It retains sparse centers and radial predictions, then performs global instance suppression. This bounds the dense network output memory for large fields. The 4,000-proposal limit remains explicit in prediction reports.
 
-Training settings are [saved here](../artifacts/full-fish/settings.json): up to 150 epochs, 200 batches per epoch, batch size one, 64 rays, 16 initial U-Net filters, learning rate 0.0003, and early-stop patience 20 epochs. Loss and checkpoint selection use the independent validation component.
+Training settings are saved here (`training_metadata/full-fish/settings.json`): up to 150 epochs, 200 batches per epoch, batch size one, 64 rays, 16 initial U-Net filters, learning rate 0.0003, and early-stop patience 20 epochs. Loss and checkpoint selection use the independent validation component.
 
 ## Use in the viewer
 
@@ -69,18 +75,21 @@ Launch `./run-viewer.sh FISH` and open **Neural training…**.
 - **Apply a saved StarDist model** uses the selected images and saved model settings; an audit selection does not force application to the whole collection.
 - **Open saved run…** restores the graphs, results, model folder, and collection audit from a training report.
 
-The full run is saved in [`artifacts/full-fish/training/neural-train-20260915-033619-354714/`](../artifacts/full-fish/training/neural-train-20260915-033619-354714/). Its [report.json](../artifacts/full-fish/training/neural-train-20260915-033619-354714/report.json) is updated after each epoch. Keep the audit cache as well as the model/run folders to reproduce training. Source image and scene file sizes/timestamps are checked before reusing an audit.
+The completed baseline's report is archived locally under
+`training_metadata/full-fish/training/`; the inference checkpoint is
+`models/cells-sensitive`. Its generated caches and predictions were removed.
+Source image and scene file sizes/timestamps are checked when reusing a rebuilt audit.
 
 ## Reproduce from the command line
 
 ```bash
 # Use a new output directory when repeating the audit.
 .venv/bin/python -m fish_viewer.neural FISH --audit-only \
-  --settings artifacts/full-fish/settings.json --output /path/to/new-audit
+  --settings training_metadata/full-fish/settings.json --output /path/to/new-audit
 
 .venv/bin/python -m fish_viewer.neural FISH \
   --audit /path/to/new-audit/audit.json \
-  --settings artifacts/full-fish/settings.json --output neural_runs
+  --settings training_metadata/full-fish/settings.json --output neural_runs
 
 .venv/bin/python scripts/summarize_collection.py \
   --audit /path/to/new-audit/audit.json --run /path/to/run/report.json

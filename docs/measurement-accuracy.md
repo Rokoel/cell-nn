@@ -1,5 +1,7 @@
 # Held-out volume and distance accuracy
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
 Evaluated on October 7, 2026 using the app's existing balanced StarDist3D cell
 checkpoint and 3D signal CNN, with the current acceptance settings. Roundness
 and elongation filtering were disabled; visible membrane evidence was required.

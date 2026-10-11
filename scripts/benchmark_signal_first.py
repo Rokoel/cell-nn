@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 import random
 import sys
-import time
 
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from PySide6 import QtCore

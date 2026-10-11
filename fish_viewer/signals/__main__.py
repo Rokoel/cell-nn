@@ -2,13 +2,11 @@
 import argparse
 from dataclasses import replace
 import json
-import os
 from pathlib import Path
 import signal
 import sys
-import sysconfig
 
-from ..neural.__main__ import Cancellation
+from ..worker_runtime import Cancellation, restart_with_cuda
 from .config import SignalConfig
 
 
@@ -22,12 +20,7 @@ def main():
         manifest = json.loads((known.model / 'signal-model.json').read_text())
         if manifest.get('engine') in DIRECT_ENGINES:
             dispatch(sys.argv[1:])
-    if sys.platform.startswith('linux') and not os.environ.get('FISH_CUDA_PATH_READY'):
-        libraries=sorted((Path(sysconfig.get_paths()['purelib'])/'nvidia').glob('*/lib'))
-        if libraries:
-            environment=os.environ.copy();environment['FISH_CUDA_PATH_READY']='1'
-            environment['LD_LIBRARY_PATH']=os.pathsep.join(map(str,libraries))+os.pathsep+environment.get('LD_LIBRARY_PATH','')
-            os.execve(sys.executable,[sys.executable,'-m','fish_viewer.signals',*sys.argv[1:]],environment)
+    restart_with_cuda('fish_viewer.signals')
     parser=argparse.ArgumentParser(description='Train or apply a cell-restricted 3D signal detector.')
     parser.add_argument('--mode',choices=['audit','train','apply','controls'],required=True)
     parser.add_argument('--cell-report',type=Path)

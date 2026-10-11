@@ -93,6 +93,7 @@ class AnnotationEditor(QtWidgets.QWidget):
         self.selection = None
         self.handles = []
         layout = QtWidgets.QVBoxLayout(self)
+        layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
         row = QtWidgets.QHBoxLayout()
         self.manual = QtWidgets.QCheckBox("Manual")
         self.program = QtWidgets.QCheckBox("Program")
@@ -203,6 +204,7 @@ class AnnotationEditor(QtWidgets.QWidget):
         self.warning.setText(
             "\n".join(w for w in dataset.scene.warnings if "no saved" not in w.lower())
         )
+        self.warning.setVisible(bool(self.warning.text()))
         self.document = cached or AnnotationDocument(dataset, report, self.changed)
         self.document.dataset = dataset
         self.document.changed = self.changed
@@ -352,6 +354,7 @@ class AnnotationEditor(QtWidgets.QWidget):
                         ),
                     )
         w.distances.blockSignals(False)
+        w.update_results_overview(report)
 
     def visibility(self):
         if not self.document:

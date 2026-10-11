@@ -5,34 +5,21 @@ import os
 from pathlib import Path
 import signal
 import sys
-import sysconfig
-import threading
 
 import numpy as np
 
+from ..worker_runtime import Cancellation, restart_with_cuda
 from ..models import LibraryEntry
 from ..reader import entry_for_path, scan_library
 from .config import NeuralConfig
 
 
-class Cancellation:
-    def __init__(self, path=None):
-        self.path = Path(path) if path else None
-        self.event = threading.Event()
-    def is_set(self):
-        return self.event.is_set() or bool(self.path and self.path.exists())
 
 
 def main():
     # pip CUDA libraries live outside the system loader path. Set the path
     # before importing TensorFlow by restarting only this worker, once.
-    if sys.platform.startswith('linux') and not os.environ.get('FISH_CUDA_PATH_READY'):
-        libraries=sorted((Path(sysconfig.get_paths()['purelib'])/'nvidia').glob('*/lib'))
-        if libraries:
-            environment=os.environ.copy()
-            environment['FISH_CUDA_PATH_READY']='1'
-            environment['LD_LIBRARY_PATH']=os.pathsep.join(map(str,libraries))+os.pathsep+environment.get('LD_LIBRARY_PATH','')
-            os.execve(sys.executable,[sys.executable,'-m','fish_viewer.neural',*sys.argv[1:]],environment)
+    restart_with_cuda('fish_viewer.neural')
     parser=argparse.ArgumentParser(description='Train or apply StarDist 3D to Imaris stacks.')
     parser.add_argument('paths',nargs='*')
     parser.add_argument('--request',type=Path,help='JSON request written by the GUI')

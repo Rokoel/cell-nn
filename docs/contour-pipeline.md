@@ -1,5 +1,7 @@
 # Classical 3D contour pipeline
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
 The viewer includes a non-ML baseline that finds membrane-like rings, creates 3D cell regions, and keeps approximately spherical cells with moderate elongation. “Training” is a reproducible search over classical image-processing parameters. No neural network or pretrained image recognizer is used.
 
 ## GUI workflow
@@ -78,7 +80,7 @@ On Windows substitute `.venv\Scripts\python.exe`. No GPU or Imaris installation 
 
 The reference experiment uses four annotated tuning images from `101212` and `131212`; `131212…CG488c.ims` is unannotated; `141212…CG488b.ims` supplies ten evaluation cells. All six images automatically selected channel 3, the 633 nm channel.
 
-The completed 12-trial run is saved in [the local report](../artifacts/pipeline-final/tune-20260915-015710-578319/report.json), with [score graphs](../artifacts/pipeline-final/tune-20260915-015710-578319/scores.png) and [reusable settings](../artifacts/pipeline-final/tune-20260915-015710-578319/settings.json). With conservative edge exclusion enabled, the evaluation image has **mean Dice 0.072**, **IoU 0.057**, and **1/10 annotated cells detected**. Matched-cell boundary RMSE is **0.611 µm**, based on that one match. There are 143 predicted candidates; 142 are unscored because no matching reference exists. This is poor annotation recall and is not ready for unattended contour production.
+The historical 12-trial run and its generated graphs/settings were removed. The following numbers document that experiment, rather than a currently bundled result. With conservative edge exclusion enabled, the evaluation image has **mean Dice 0.072**, **IoU 0.057**, and **1/10 annotated cells detected**. Matched-cell boundary RMSE is **0.611 µm**, based on that one match. There are 143 predicted candidates; 142 are unscored because no matching reference exists. This is poor annotation recall and is not ready for unattended contour production.
 
 All saved reference cells are scored, including cells near the stack boundary that the conservative filter deliberately excludes. Several training annotations touch or approach the first/last optical section. Disabling **Exclude cells cut by image edges** admits more candidates, including partial cells. Inspect that tradeoff before interpreting overall recall. The earlier exploratory implementation had a less strict edge check; the linked run uses the corrected implementation.
 

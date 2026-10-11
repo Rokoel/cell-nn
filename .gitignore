@@ -16,3 +16,7 @@ training_annotations/
 *.fish-view.json
 
 .venv-freeze/
+
+# Local reconstruction metadata; its guide is versioned.
+training_metadata/*
+!training_metadata/README.md

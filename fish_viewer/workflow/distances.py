@@ -1,6 +1,5 @@
 """Signal A to closest point B on its assigned cell's calibrated triangle mesh."""
 import hashlib
-import json
 from pathlib import Path
 import shutil
 

@@ -1,5 +1,7 @@
 # Cells found by both approaches
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
 In the focused app, open **Models and device** and click **Use both-detector
 consensus**. This selects the original sensitive StarDist, surface-loss contour
 U-Net and signal-center U-Net, and enables **Require both cell detectors**.
@@ -74,7 +76,7 @@ The subset is small, especially for distances. No test-set threshold tuning was
 performed. The current default remains unchanged.
 
 [Summary](../reports/cell-consensus/summary.json). Full runs:
-`artifacts/cell-consensus-validation-20261009-212626`.
+the historical run folder (removed during cleanup).
 Reproduce using `scripts/benchmark_cell_consensus.py`, with `FISH_SPOTS_PYTHON`
 set to the PyTorch environment's Python executable. `--resume` reuses completed
 runs; `--reuse-hybrid` accepts a completed hybrid benchmark for the same scans.

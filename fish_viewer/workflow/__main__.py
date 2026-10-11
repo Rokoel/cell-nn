@@ -4,7 +4,7 @@ import json
 import signal
 import traceback
 
-from ..neural.__main__ import Cancellation
+from ..worker_runtime import Cancellation
 from ..pipeline.segmentation import Cancelled
 
 

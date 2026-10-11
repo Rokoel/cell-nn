@@ -4,20 +4,13 @@ import json
 import os
 from pathlib import Path
 import signal
-import sys
-import sysconfig
 
-from ..neural.__main__ import Cancellation
+from ..worker_runtime import Cancellation, restart_with_cuda
 from .config import RefinementConfig
 
 
 def main():
-    if sys.platform.startswith('linux') and not os.environ.get('FISH_CUDA_PATH_READY'):
-        libraries=sorted((Path(sysconfig.get_paths()['purelib'])/'nvidia').glob('*/lib'))
-        if libraries:
-            env=os.environ.copy();env['FISH_CUDA_PATH_READY']='1'
-            env['LD_LIBRARY_PATH']=os.pathsep.join(map(str,libraries))+os.pathsep+env.get('LD_LIBRARY_PATH','')
-            os.execve(sys.executable,[sys.executable,'-m','fish_viewer.refinement',*sys.argv[1:]],env)
+    restart_with_cuda('fish_viewer.refinement')
     parser=argparse.ArgumentParser(description='Train or apply a seeded 3D U-Net boundary model.')
     parser.add_argument('--redraw-proposals',action='store_true',help='Use detector boxes/seeds only; reject failed contours without fallback')
     parser.add_argument('--mode',choices=['train','apply'],required=True)

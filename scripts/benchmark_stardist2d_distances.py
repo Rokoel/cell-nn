@@ -1,5 +1,5 @@
 """Frozen 2D contours + signal-center U-Net measurement test on all held-out scans."""
-import argparse,json,os,subprocess,sys
+import argparse,json,subprocess,sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from benchmark_all_heldout import evaluate_run,paired_stats

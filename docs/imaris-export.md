@@ -1,5 +1,7 @@
 # Imaris export compatibility
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
 Use **Scan workflow / Export Imaris… → Export current result as Imaris…** after
 filtering cells without signals. Keep the exported `.ims` and `.imx` together and
 open the **`.imx` in Imaris** to load the image, contours, and signal centers.
@@ -36,25 +38,20 @@ The scene thumbnail comes from the source image, avoiding the original scene's
 annotated screenshot. Original files are never modified and existing outputs are
 never overwritten. Re-export old results to obtain the corrected scene format.
 
-## Test files
+## Create an annotation-free test copy
 
-- [Annotation-free image](../artifacts/imaris-compatibility/annotation-free/141212_3ab3ad_Lam633m_dsRed543_CG488b_unannotated.ims)
-  and [empty scene](../artifacts/imaris-compatibility/annotation-free/141212_3ab3ad_Lam633m_dsRed543_CG488b_unannotated.imx).
-  This scan comes from `3abx3ad_101212`. Its original 10 surfaces and 22 measurement
-  points are absent from the new scene. The image bytes are unchanged.
-- [Corrected annotated scene](../artifacts/imaris-compatibility/corrected-export/cells-with-signals.imx)
-  and [image](../artifacts/imaris-compatibility/corrected-export/cells-with-signals.ims):
-  an existing saved workflow result, re-exported with 26 cells and 28 signals.
-- [Verification record](../artifacts/imaris-compatibility/verification.json),
-  including source/output SHA-256 values.
-
-To create another clean copy:
+Historical test exports were removed during cleanup. The original source scan
+and packaged scene template remain. Generate a new pair in a fresh output folder:
 
 ```bash
 .venv/bin/python -m fish_viewer.workflow unannotated \
   --image 'FISH/3abx3ad_101212/141212_3ab3ad_Lam633m_dsRed543_CG488b.ims' \
   --output 'artifacts/my-test/unannotated.ims'
 ```
+
+For a processed export, use the Analysis app or Viewer workflow and retain the
+`.ims`/`.imx` pair. Source-file and template regression checks live in
+[`test_imaris_compatibility.py`](../tests/test_imaris_compatibility.py).
 
 ## Validation scope
 

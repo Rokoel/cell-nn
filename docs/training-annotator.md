@@ -1,8 +1,10 @@
 # Training image annotator
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
 Launch `./run-annotator.sh` on Linux or `run-annotator.bat` on Windows, using the existing app environment (`setup-analysis.sh` / `setup-analysis.bat` if needed). No neural models or ML runtimes are needed. An installed package also provides `fish-annotator`.
 
-The app randomly selects a training scan, one native Z slice, and a 128 × 128-pixel crop. Only the cell channel identified by the saved audit is read and displayed, in grayscale. There are no signal channels, projections, or layer controls. It uses `artifacts/refinement-fish/audit/audit.json`: only training cases, with the four previously excluded scans omitted. Validation/test cases and aliases are never sampled; conflicting acquisition groups, fingerprints or paths are rejected. It does not favor manually marked cells.
+The app randomly selects a training scan, one native Z slice, and a 128 × 128-pixel crop. Only the cell channel identified by the saved audit is read and displayed, in grayscale. There are no signal channels, projections, or layer controls. It uses a regenerated `artifacts/refinement-fish/audit/audit.json` when present, otherwise the archived `training_metadata/refinement-fish/audit/audit.json`: only training cases, with the four previously excluded scans omitted. Validation/test cases and aliases are never sampled; conflicting acquisition groups, fingerprints or paths are rejected. It does not favor manually marked cells.
 
 Choose **Likely cell border** (yellow) or **Likely not cell border** (blue), then paint using the left mouse button. Marks are translucent. Each pixel holds one category; painting replaces earlier marks. Brush diameter is in native pixels, independent of zoom. **Eraser** restores unknown pixels. **Clear all** removes every mark on the image.
 

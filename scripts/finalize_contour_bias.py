@@ -1,5 +1,5 @@
 """Freeze validation choice, evaluate test contours and verify the candidate app."""
-import hashlib,json,os,shutil,subprocess,sys
+import hashlib,json,shutil,subprocess,sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];RUN=ROOT/'artifacts/contour-bias-20261009'
 

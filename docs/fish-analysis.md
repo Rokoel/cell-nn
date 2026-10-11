@@ -1,5 +1,7 @@
 # FISH Analysis
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
 Download the standalone Windows EXE or Linux AppImage from the GitHub release.
 For source installations, run `./run-analysis.sh` on Linux or `run-analysis.bat`
 on Windows. This focused
@@ -22,13 +24,38 @@ These builds do not need setup scripts. Linux requires internet access on first 
 
 For a source installation:
 
-Use Python 3.12. The launch scripts set up the application environment on first
-use; an internet connection is needed to download dependencies. Run
-`setup-spots.sh` / `setup-spots.bat` to install the isolated PyTorch runtime for
-the signal-center U-Net. Linux supports CPU or a configured GPU environment;
+Use Python 3.12. Run `./setup-analysis.sh` on Linux or `setup-analysis.bat` on
+Windows before launching. Setup installs the application and isolated PyTorch
+runtimes; an internet connection is needed to download dependencies. The separate
+`setup-spots.sh` / `setup-spots.bat` scripts can reinstall the signal runtime. Linux supports CPU or a configured GPU environment;
 native Windows uses CPU for TensorFlow models. All model checkpoints are bundled.
 
+![Analysis displaying original manual annotations](images/analysis.png)
+
+The screenshot shows the current application with a retained original scan,
+not generated analysis predictions.
+
 ## Processing
+
+The summary beside **Analyze selected** shows the current pipeline, device and
+channel choices. **Check channels** in the scan list means the metadata does not
+unambiguously identify a cell channel, or the saved selection needs correction.
+Automatic inference still uses image evidence; this is a review prompt.
+
+Scans show **Pending**, **Running**, **Completed**, **Failed** or **Cancelled**.
+Failures retain their error in the tooltip and the next scan runs. Use
+**Select unfinished scans** to retry failed or cancelled scans and run pending
+ones. Completed scans keep their saved outputs.
+
+The **Annotations and editing** panel stays beside the image; its toolbar toggle
+can hide or restore it. The **Results** tab groups manual and program cell/signal
+counts, measured-distance summaries and export actions. Counts and distances
+update after edits; exports save the current annotations.
+
+![Results overview in the tested AppImage](images/results.png)
+
+This capture is from the packaged AppImage after processing the retained example
+scan with the default consensus pipeline. It shows this example’s outputs.
 
 1. Add scans or recursively add a folder. Select one or several scans.
 2. Preview each scan and open **Channels…** to choose its cell channel and signal

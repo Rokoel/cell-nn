@@ -21,7 +21,7 @@ def network(tf,config):
 
 def loss(tf,target,prediction):
     heat,known,faces,box_weight=target[...,0:1],target[...,1:2],target[...,2:8],target[...,8:9]
-    axes=(1,2,3,4);p=tf.math.sigmoid(prediction[...,0:1])
+    axes=(1,2,3,4)
     ce=tf.nn.sigmoid_cross_entropy_with_logits(labels=heat,logits=prediction[...,0:1])
     positive=heat*known;negative=(1-heat)*known
     center=tf.reduce_sum(ce*positive,axis=axes)/tf.maximum(tf.reduce_sum(positive,axis=axes),1.)

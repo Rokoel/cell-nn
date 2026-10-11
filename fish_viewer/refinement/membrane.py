@@ -290,7 +290,7 @@ def apply(cells_report, output, config=None, emit=lambda e: None, cancel=None, a
 def main():
     import argparse
     import signal
-    from ..neural.__main__ import Cancellation
+    from ..worker_runtime import Cancellation
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cells-report', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)

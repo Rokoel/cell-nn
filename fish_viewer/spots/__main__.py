@@ -4,7 +4,7 @@ from pathlib import Path
 import signal
 import sys
 
-from ..neural.__main__ import Cancellation
+from ..worker_runtime import Cancellation
 
 
 def main():

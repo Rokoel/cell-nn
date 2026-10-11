@@ -5,6 +5,7 @@ from pathlib import Path
 from PySide6 import QtWidgets
 
 from .config import NeuralConfig
+from ..project_paths import ROOT
 
 
 def read_model(path):
@@ -23,8 +24,7 @@ def read_model(path):
 
 def discover_models(roots=None):
     if roots is None:
-        project = Path(__file__).resolve().parents[2]
-        roots = [project / 'artifacts', project / 'neural_runs', Path.cwd() / 'neural_runs']
+        roots = [ROOT / 'models', ROOT / 'neural_runs', Path.cwd() / 'neural_runs']
     found = {}
     for root in roots:
         for manifest in Path(root).glob('**/fish-model.json'):
@@ -33,6 +33,14 @@ def discover_models(roots=None):
                 continue
             try:
                 read_model(path)
+                if path.parent == (ROOT / 'models').resolve():
+                    found[path] = {
+                        'cells': 'Balanced StarDist 3D',
+                        'cells-conservative': 'Conservative StarDist 3D',
+                        'cells-sensitive': 'Sensitive StarDist 3D',
+                        'cells-preprocessed': 'Preprocessed StarDist 3D',
+                    }.get(path.name, path.name)
+                    continue
                 report = json.loads((path.parent / 'report.json').read_text())
                 if report.get('status') != 'complete' or report.get('mode') != 'train':
                     continue
@@ -45,7 +53,7 @@ def discover_models(roots=None):
                 continue
     # Put the completed balanced collection first; list newer runs first within families.
     return sorted(found.items(), key=lambda pair: (
-        0 if 'balanced-fish' in pair[0].parts else 1 if 'precision-fish' in pair[0].parts else 2,
+        0 if pair[0].name == 'cells' or 'balanced-fish' in pair[0].parts else 1 if pair[0].name == 'cells-conservative' or 'precision-fish' in pair[0].parts else 2,
         -pair[0].stat().st_mtime))
 
 

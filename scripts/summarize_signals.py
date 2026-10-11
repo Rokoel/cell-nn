@@ -9,7 +9,6 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import numpy as np
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_agg import FigureCanvasAgg
-from scipy.spatial.distance import cdist
 
 from fish_viewer.models import LibraryEntry
 from fish_viewer.reader import load_dataset

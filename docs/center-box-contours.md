@@ -1,5 +1,11 @@
 # Cell centers → padded boxes → crop contours
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
+Generated arrays and historical predictions have been removed. Rebuild training
+caches before running reproduction commands; [training data](training-data.md)
+explains the retained metadata and dependency order.
+
 The alternative pipeline replaces the StarDist detector. A tiny 3D network
 predicts center scores and six distances to axis-aligned box faces. Each box
 receives extra physical context. A separate seeded 3D U-Net sees that small
@@ -82,3 +88,10 @@ separate step from training a new model.
 CPU inference uses the same weights and geometry on Linux and native Windows.
 Linux can use the existing TensorFlow GPU setup. Local verification does not
 substitute for a native Windows or Imaris runtime test.
+
+## Preserved experiment figure
+
+![Historical experiment results](../reports/center-box-contours/paired-errors.png)
+
+This figure belongs to the experiment described above and uses its recorded
+cohort and settings; it does not summarize all current Analysis presets.

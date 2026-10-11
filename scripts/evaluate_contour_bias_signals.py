@@ -16,7 +16,6 @@ def main():
     if args.output.exists():p.error('Choose a new output directory')
     args.output.mkdir(parents=True)
     run=json.loads(args.report.read_text());files={str(Path(r['image']).relative_to(ROOT)):r for r in run['files']}
-    original=json.loads((ROOT/'reports/signal-centers/measurements/report.json').read_text())
     with (ROOT/'reports/signal-centers/measurements/unet-distances.csv').open(newline='') as f:raw=list(csv.DictReader(f))
     grouped={}
     for r in raw:grouped.setdefault(r['image'],[]).append(r)

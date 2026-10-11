@@ -1,5 +1,5 @@
 """Publish graphs, paired uncertainty and tables for the contour-bias experiment."""
-import argparse,csv,json,shutil
+import argparse,json,shutil
 from pathlib import Path
 import sys
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))

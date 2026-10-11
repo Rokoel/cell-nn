@@ -1,5 +1,7 @@
 # FISH Analysis v0.8.1
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
 The Linux AppImage supports CUDA for **both TensorFlow cell contouring and
 PyTorch signal detection**. On first launch, it automatically downloads the
 neural runtime from this release and shows download/installation progress.

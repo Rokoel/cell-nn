@@ -4,6 +4,9 @@ from pathlib import Path
 import sys
 import uuid
 
+from ..worker_runtime import process_environment
+from ..project_paths import bundled_model
+
 from PySide6 import QtCore,QtGui,QtWidgets
 
 from ..pipeline.gui import PlotCanvas
@@ -29,13 +32,8 @@ class SignalPanel(QtWidgets.QWidget):
         if safe.exists():refreshed=safe
         self.audit_path=QtWidgets.QLineEdit(str(refreshed if refreshed.exists() else root/'artifacts/signal-fish/audit/audit.json'))
         self.output=QtWidgets.QLineEdit(str(root/'signal_runs'))
-        bundled=root/'models/signals-center-unet'
+        bundled=bundled_model('signals-center-unet')
         if (bundled/'signal-model.json').is_file():self.model_path.setText(str(bundled))
-        else:
-            models=sorted((root/'artifacts/signal-fish').glob('**/signal-model.json'),key=lambda p:p.stat().st_mtime,reverse=True)
-            for manifest in models:
-                report=manifest.parent.parent/'report.json'
-                if report.is_file() and json.loads(report.read_text()).get('status')=='complete':self.model_path.setText(str(manifest.parent));break
         for title,edit,folder in [('Signal model',self.model_path,True),('Signal audit',self.audit_path,False),('Output folder',self.output,True)]:
             button=QtWidgets.QPushButton('Browse…')
             button.clicked.connect(lambda checked=False,e=edit,f=folder:self.browse(e,f))
@@ -97,9 +95,7 @@ class SignalPanel(QtWidgets.QWidget):
         self.buffer=b'';self.finished_report=None;self.run_directory=None;self.stderr='';self.history=[];self.report=None
         self.draw();self.show_button.setEnabled(False);self.summary.setText('Processing…')
         self.job=QtCore.QProcess(self)
-        environment=QtCore.QProcessEnvironment.systemEnvironment();environment.insert('PYTHONUNBUFFERED','1')
-        environment.insert('PYTHONPATH',str(Path(__file__).resolve().parents[2]));environment.insert('OMP_NUM_THREADS','4')
-        environment.insert('MPLCONFIGDIR',str(job_dir/'matplotlib'));self.job.setProcessEnvironment(environment)
+        self.job.setProcessEnvironment(process_environment(job_dir))
         self.job.readyReadStandardOutput.connect(self.read_events);self.job.readyReadStandardError.connect(self.read_errors)
         self.job.finished.connect(self.process_finished)
         self.job.errorOccurred.connect(lambda error:self.process_finished(-1) if error==QtCore.QProcess.ProcessError.FailedToStart else None)

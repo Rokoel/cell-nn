@@ -2,10 +2,12 @@
 from dataclasses import asdict, replace
 from datetime import datetime
 import json
-import os
 from pathlib import Path
 import sys
 import uuid
+
+from ..worker_runtime import process_environment
+from ..project_paths import bundled_model
 
 from PySide6 import QtCore
 
@@ -20,35 +22,29 @@ STAGES = [('cells', 'Detecting cell contours'), ('signals', 'Finding signals ins
 
 
 def default_models():
-    root = Path(__file__).resolve().parents[2]
-    cells, signals = root / 'models/cells-sensitive', root / 'models/signals-center-unet'
+    cells, signals = bundled_model('cells-sensitive'), bundled_model('signals-center-unet')
     if not (cells / 'fish-model.json').exists():
         raise FileNotFoundError('The bundled sensitive StarDist model for consensus is missing.')
-    if not (signals / 'signal-model.json').exists():
-        signals = root / 'artifacts/signal-fish/training/signal-train-20260919-020312-268747/model'
+    if not (signals / 'signal-model.json').is_file():
+        raise FileNotFoundError('The bundled signal-center U-Net model is missing.')
     return cells, signals
 
 
 def sensitive_stardist_model():
-    root = Path(__file__).resolve().parents[2]
-    for path in (root / 'models/cells-sensitive',
-                 root / 'artifacts/full-fish/training/neural-train-20260915-033619-354714/model'):
-        if (path / 'fish-model.json').is_file():
-            return str(path)
-    return ''
+    path = bundled_model('cells-sensitive')
+    return str(path) if (path / 'fish-model.json').is_file() else ''
 
 
 def default_refinement_model():
-    root = Path(__file__).resolve().parents[2] / 'models'
     for name in ('refinement-bias-candidate', 'refinement'):
-        path = root / name
+        path = bundled_model(name)
         if (path / 'refinement-model.json').is_file():
             return str(path)
     return ''
 
 
 def default_proposal_model():
-    path = Path(__file__).resolve().parents[2] / 'models/proposals'
+    path = bundled_model('proposals')
     return str(path) if (path / 'proposal-model.json').is_file() else ''
 
 
@@ -261,13 +257,7 @@ class AnalysisController(QtCore.QObject):
                                 phase=self.stages[index][1], current=0, total=0))
         process = QtCore.QProcess(self)
         self.job = process
-        environment = QtCore.QProcessEnvironment.systemEnvironment()
-        environment.insert('PYTHONUNBUFFERED', '1')
-        environment.insert('PYTHONPATH', str(Path(__file__).resolve().parents[2]) + os.pathsep + os.environ.get('PYTHONPATH', ''))
-        environment.insert('OMP_NUM_THREADS', '4')
-        environment.insert('TF_CPP_MIN_LOG_LEVEL', '2')
-        environment.insert('MPLCONFIGDIR', str(self.directory / 'matplotlib'))
-        process.setProcessEnvironment(environment)
+        process.setProcessEnvironment(process_environment(self.directory, quiet_tensorflow=True))
         process.readyReadStandardOutput.connect(self._read)
         process.readyReadStandardError.connect(self._read_errors)
         process.finished.connect(self._finished)

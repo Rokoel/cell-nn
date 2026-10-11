@@ -1,9 +1,10 @@
 """Live preprocessing, epoch and loss progress for the boundary worker."""
 import json
-import os
 from pathlib import Path
 import sys
 import uuid
+
+from ..worker_runtime import process_environment
 
 from PySide6 import QtCore, QtWidgets
 from matplotlib.figure import Figure
@@ -69,10 +70,7 @@ class TrainingDialog(QtWidgets.QDialog):
         self.run.setEnabled(False);self.stop.setEnabled(True);self.use.setEnabled(False)
         self.audit.setEnabled(False);self.output.setEnabled(False);self.device.setEnabled(False)
         process=QtCore.QProcess(self);self.process=process
-        env=QtCore.QProcessEnvironment.systemEnvironment()
-        env.insert('PYTHONUNBUFFERED','1');env.insert('TF_CPP_MIN_LOG_LEVEL','2');env.insert('OMP_NUM_THREADS','4')
-        env.insert('PYTHONPATH',str(Path(__file__).resolve().parents[2])+os.pathsep+os.environ.get('PYTHONPATH',''))
-        process.setProcessEnvironment(env)
+        process.setProcessEnvironment(process_environment(quiet_tensorflow=True, preserve_pythonpath=True))
         process.readyReadStandardOutput.connect(self.read)
         process.readyReadStandardError.connect(self.read_errors)
         process.finished.connect(self.finished)

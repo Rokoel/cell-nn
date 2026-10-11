@@ -3,16 +3,15 @@ import argparse
 from dataclasses import replace, asdict
 import hashlib
 import json
-import os
 from pathlib import Path
 import sys
-import sysconfig
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import numpy as np
 from scipy import ndimage as ndi
+from fish_viewer.worker_runtime import restart_with_cuda
 from fish_viewer.refinement.config import RefinementConfig, read_model
 from fish_viewer.refinement.data import coordinates, seed_image
 from fish_viewer.refinement.inference import seeded_component, surface_evidence
@@ -90,12 +89,7 @@ def embedded_metrics(mask, lower, upper, box, truth_local, spacing):
 
 
 def main():
-    if sys.platform.startswith('linux') and not os.environ.get('FISH_CUDA_PATH_READY'):
-        libs=sorted((Path(sysconfig.get_paths()['purelib'])/'nvidia').glob('*/lib'))
-        if libs:
-            env=os.environ.copy();env['FISH_CUDA_PATH_READY']='1'
-            env['LD_LIBRARY_PATH']=os.pathsep.join(map(str,libs))+os.pathsep+env.get('LD_LIBRARY_PATH','')
-            os.execve(sys.executable,[sys.executable,str(Path(__file__).resolve()),*sys.argv[1:]],env)
+    restart_with_cuda()
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--audit',type=Path,required=True);p.add_argument('--baseline',type=Path,required=True)
     p.add_argument('--model',type=Path,default=ROOT/'models/refinement');p.add_argument('--output',type=Path,required=True)

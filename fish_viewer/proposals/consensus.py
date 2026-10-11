@@ -84,7 +84,7 @@ def apply(primary_report, secondary_report, output, minimum_iou=.5, emit=lambda 
 
 
 def main():
-    from ..neural.__main__ import Cancellation
+    from ..worker_runtime import Cancellation
     import signal
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--primary-report',type=Path,required=True);p.add_argument('--secondary-report',type=Path,required=True)

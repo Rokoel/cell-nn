@@ -1,5 +1,7 @@
 # Releases
 
+[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+
 `.github/workflows/release.yml` builds Windows x64 and Linux x64 on their native
 GitHub runners, then publishes only after both packaged applications pass.
 No FISH scans or local training caches are required or distributed.
@@ -91,3 +93,19 @@ The frozen executable recognizes the same restricted `-m fish_viewer.<worker>`
 commands as the source app's QProcess workers. Workers run separately so the GUI
 never loads TensorFlow and PyTorch together. `--verify-models` and `--self-test
 --output <new-directory>` expose the packaged checks for troubleshooting.
+
+## Test a local AppImage with original data
+
+Run the installed application outside the checkout, with its runtime parts beside
+the AppImage. The optional `--scan` check runs the default consensus pipeline
+through the GUI queue, verifies nonempty measurements and Imaris/Excel exports,
+reopens the saved analysis, and captures the running interface.
+
+```bash
+APPIMAGE_EXTRACT_AND_RUN=1 FISH_RUNTIME_DOWNLOAD_DIR=/absolute/path/to/dist \
+  /absolute/path/to/dist/FISH-Analysis-<tag>-linux-x64.AppImage \
+  --self-test --device gpu --output /tmp/fish-installed-test \
+  --scan /absolute/path/to/original.ims
+```
+
+Use `--device cpu` to test without an NVIDIA GPU.

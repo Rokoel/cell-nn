@@ -56,11 +56,16 @@ def train(annotations, audit, output, epochs=40, device='auto', seed=42):
                   annotation_sources=[{k:r[k] for k in ('folder','group','sha256')} for r in rows],
                   policy='Unknown ignored. Per-image class-balanced BCE + positive-only masked Dice. 75% positive-containing crop sampling. Acquisition-group-disjoint development; final refit on all annotations.')
     write();tf=tensorflow(device,seed);model=network(tf);optimizer=tf.keras.optimizers.Adam(1e-3)
-    @tf.function
-    def step(images,labels):
-        with tf.GradientTape() as tape: value=loss(tf,labels,model(images,training=True))
-        optimizer.apply_gradients(zip(tape.gradient(value,model.trainable_variables),model.trainable_variables))
-        return value
+    def training_step(model, optimizer):
+        # Each model/optimizer pair needs an independent TensorFlow trace.
+        @tf.function
+        def step(images, labels):
+            with tf.GradientTape() as tape:
+                value = loss(tf, labels, model(images, training=True))
+            optimizer.apply_gradients(zip(tape.gradient(value, model.trainable_variables), model.trainable_variables))
+            return value
+        return step
+    step = training_step(model, optimizer)
     def epoch(subset):
         positive=[r for r in subset if (r['labels']==3).any()];negative=[r for r in subset if not (r['labels']==3).any()]
         values=[]
@@ -88,12 +93,7 @@ def train(annotations, audit, output, epochs=40, device='auto', seed=42):
     threshold,scores=max(candidates,key=lambda p:p[1]['f1'])
     report.update(best_epoch=best_epoch,development_threshold=float(threshold),development_metrics=scores)
     tf.keras.backend.clear_session();model=network(tf);optimizer=tf.keras.optimizers.Adam(1e-3)
-    # Rebuild the traced step for the independent final model and optimizer.
-    @tf.function
-    def step(images,labels):
-        with tf.GradientTape() as tape: value=loss(tf,labels,model(images,training=True))
-        optimizer.apply_gradients(zip(tape.gradient(value,model.trainable_variables),model.trainable_variables))
-        return value
+    step = training_step(model, optimizer)
     report['refit_epochs']=[]
     for e in range(1,best_epoch+1):
         value=epoch(rows);report['refit_epochs'].append(dict(epoch=e,loss=value));write()

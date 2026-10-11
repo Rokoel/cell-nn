@@ -6,7 +6,7 @@ import time
 
 import numpy as np
 from scipy import ndimage as ndi
-from skimage import feature, filters, measure, morphology, segmentation, transform
+from skimage import feature, measure, morphology, segmentation, transform
 
 from ..models import Dataset, Surface
 from .config import PipelineConfig

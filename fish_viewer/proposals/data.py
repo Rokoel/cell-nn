@@ -1,5 +1,4 @@
 """Every complete marked cell is a training target; unmarked regions are ignored."""
-from dataclasses import asdict
 import hashlib
 import json
 from pathlib import Path
