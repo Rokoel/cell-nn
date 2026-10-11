@@ -18,7 +18,20 @@ one experiment does not describe every current Analysis preset.
 | Did preprocessing or linked 2D contours help? | [Preprocessing](../reports/preprocessed-stardist/README.md), [StarDist 2D](../reports/stardist2d/README.md) |
 | What are the historical physical measurement errors? | [Measurement accuracy](measurement-accuracy.md) |
 
-## Signal comparison
+## Current cell-pipeline measurements
+
+![Consensus and fine-tuned StarDist 2D measurement errors](images/pipeline-comparison.png)
+
+This chart uses the test summaries from
+[correct-channel consensus](../reports/consensus-correct-channels/summary.json)
+and [fine-tuned StarDist 2D distances](../reports/stardist2d/distances/report.json).
+Both cover 71 historical test scans, the signal-center U-Net and a 0.72 roundness
+gate. Each bar states its matched population; whiskers are 95% acquisition-bootstrap
+intervals. The reports use different channel protocols and match different cells
+and signals. They do not form a paired comparison or establish whole-field detection
+accuracy. Rebuild the figure with `scripts/plot_pipeline_comparison.py`.
+
+## Historical signal comparison
 
 ![Fixed-mask signal model comparison](images/signal-models.png)
 

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Version label (must match pyproject.toml, e.g. v0.8.1)
+        description: Version label (must match pyproject.toml, e.g. v0.8.2)
         required: true
         type: string
       ref:
@@ -125,7 +125,10 @@ jobs:
           for key in ('PYTHONPATH', 'PYTHONHOME', 'FISH_SPOTS_PYTHON', 'VIRTUAL_ENV'):
               env.pop(key, None)
           env['APPIMAGE_EXTRACT_AND_RUN'] = '1'
-          env['FISH_RUNTIME_DOWNLOAD_DIR'] = str(binary.parent)
+          env.pop('FISH_RUNTIME_DOWNLOAD_DIR', None)
+          # Verify adjacent runtime-part discovery without an override or network.
+          for key in ('HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy'):
+              env[key] = 'http://127.0.0.1:9'
           with tempfile.TemporaryDirectory(prefix='fish-installed-') as clean:
               env['XDG_CACHE_HOME'] = str(pathlib.Path(clean)/'cache')
               subprocess.run([str(binary), '--check-runtime', '--device', 'cpu'], cwd=clean, env=env, check=True, timeout=900)

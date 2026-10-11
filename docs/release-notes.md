@@ -1,77 +1,53 @@
-# FISH Analysis v0.8.1
+# FISH Analysis v0.8.2
 
-[Documentation](README.md) · [Models](models.md) · [Analysis](fish-analysis.md)
+This release improves scan review, documents the current cell pipelines and fixes
+Linux offline startup. All existing checkpoints remain bundled; model weights and
+the default both-detector consensus / signal-center 3D U-Net are unchanged.
 
-The Linux AppImage supports CUDA for **both TensorFlow cell contouring and
-PyTorch signal detection**. On first launch, it automatically downloads the
-neural runtime from this release and shows download/installation progress.
-Each download and extracted library is checked against SHA-256 hashes embedded
-in the AppImage. Models are included in the AppImage. Allow about 11 GB free
-for initial setup; later launches reuse about 8 GB of cached libraries offline.
-You only need to download and launch the AppImage; the `.runtime.part*` assets
-are fetched automatically, with no manual joining or installation.
+## Review and processing
 
-Choose auto/CPU/GPU under Pipeline and settings. Auto uses an available NVIDIA
-GPU and otherwise runs on CPU. A compatible host NVIDIA driver is required;
-Python and a separate CUDA toolkit are not required. The Windows EXE retains
-CPU inference and bundled Microsoft C++ runtime DLLs. CPU packages no longer
-expose an unsupported GPU option or restore an incompatible saved selection.
+- A processing summary shows the selected preset, device and channel roles.
+- Scan rows show pending, running, completed, failed or cancelled status, with
+  channel warnings and failure details. **Select unfinished scans** prepares retries.
+- **Annotations and editing** opens beside the image for contour and point editing.
+- The **Results** tab summarizes manual/program cells, signals and distances, with
+  direct access to exported files, Excel and edited Imaris scenes.
+- Shared worker startup, cancellation and bundled-model discovery were refactored.
 
-`--check-runtime --device gpu` verifies a TensorFlow 3D convolution and the
-default signal-center U-Net on CUDA in separate workers. GitHub Actions builds
-both platforms automatically and checks installed inference, model checkpoints,
-Imaris export and single-sheet Excel export on CPU. GPU execution is checked
-separately on a machine with an NVIDIA GPU.
+## Linux startup
 
-The models, default both-detector consensus pipeline and metrics are unchanged.
+The AppImage automatically detects matching `.runtime.part*` assets beside it,
+including when launched from the desktop. Keep the original filenames. Downloading
+these files beforehand supports offline first-launch installation; otherwise the
+app downloads and verifies them from this release. Completed download chunks are
+retained if setup is interrupted. Allow about 11 GB free for first-launch setup
+and about 8 GB for the installed runtime.
 
-Contour editing now shows only the current slice's border points. Select a
-contour and drag its dots directly; the grab area is 24 screen pixels across
-at every zoom level, with overlapping targets choosing the nearest dot.
-Connected border lines follow the dot during dragging. Editing a 3D slice
-makes its intersections explicit mesh vertices so moving one point keeps the
-other points on that slice fixed. Ctrl+Z restores the entire edit, and edited
-volumes, signal-to-border distances and exported geometry remain synchronized.
+Linux bundles CUDA support for TensorFlow and PyTorch; a compatible NVIDIA driver
+is required for GPU inference. Windows uses CPU inference and includes its required
+Microsoft C++ runtime DLLs. No Python installation is required on either platform.
 
-All existing models and presets are bundled. Both-detector consensus remains
-the default, with the signal-center 3D U-Net. No model weights were changed.
+## Documentation and evidence
 
-## Updated model metrics
+The README includes real screenshots of completed contour review and measurements,
+a workflow diagram for both-detector consensus and fine-tuned StarDist 2D, and a
+measurement-error chart generated from the retained test reports. The chart shows
+sample sizes and confidence intervals; the two reports use different matched
+populations and channel protocols, so it is not a paired accuracy ranking.
 
-All **144 held-out scans** were evaluated using explicit membrane channels,
-including **58 corrected channel assignments**, and the current app's
-**0.72 roundness gate**. Unchanged-channel cell runs were reused only after
-checking model hashes and input fingerprints; signal inference, filtering and
-measurements were rerun on every scan.
+Historical logs, runs and generated caches were removed from the source workspace;
+original training inputs, bundled checkpoints and evaluation reports were retained.
+See the training-data guide for rebuilding caches before retraining.
 
-| Split | Scans | Matched cells / signals | Volume MAPE | Distance MAE | Distance RMSE |
-|---|---:|---:|---:|---:|---:|
-| Test | 71 | 299 / 270 | 8.59% | 0.130 µm | 0.178 µm |
-| Validation | 73 | 359 / 332 | 5.95% | 0.118 µm | 0.160 µm |
-| All held-out | 144 | 658 / 602 | 7.15% | 0.123 µm | 0.168 µm |
+## Verification
 
-Comparisons use matched complete manual cells and matched same-channel signals
-with actual manual A–B measurements. All outliers are included. Test volumes
-remain 7.86% too small on average, and distances average 0.077 µm too short.
-Acquisition-bootstrap 95% intervals: test volume MAPE 5.67–11.80%; distance
-MAE 0.109–0.146 µm. Sparse annotations do not establish detection precision;
-validation guided model selection and the historical test fold was inspected
-in prior experiments. Reports, individual measurement pairs, channel assignments
-and the reproducible benchmark are included under
-`reports/consensus-correct-channels/` and `scripts/benchmark_consensus_channels.py`.
+The corrected local Linux AppImage passed normal cold-cache startup with network
+access blocked, every default pipeline stage on an original scan, Imaris/Excel
+exports and reopening the results. That example retained 20 cells and 21 signals;
+these counts are a functionality check, not an accuracy estimate. The source suite
+passed 330 tests (7 optional checks skipped).
 
-## Distribution and verification
-
-Download the EXE on Windows, or make the AppImage executable on Linux.
-See `docs/releasing.md` for runtime requirements and the FUSE-free launch option.
-
-Contour dragging, fixed neighbor positions, live line updates, repeated edits,
-mesh closure, undo, edited export/reload, and the real Linux GUI were verified.
-
-## Attribution
-
-StarDist 2D: Schmidt, Weigert, Broaddus and Myers, **Cell Detection with Star-convex
-Polygons**, MICCAI 2018, [paper](https://arxiv.org/abs/1806.03535),
-[DOI](https://doi.org/10.1007/978-3-030-00934-2_30). The optional fine-tuned 2D
-checkpoint retains its upstream BSD-3-Clause license. Model provenance and exact
-checkpoint hashes are bundled in `models/origins.json`.
+Release publication requires both Windows and Linux packaged applications to pass
+checkpoint loading, CPU runtime checks and the full synthetic consensus pipeline.
+Linux runtime installation is tested with adjacent assets, no directory override
+and network access blocked. GPU execution was additionally checked locally.

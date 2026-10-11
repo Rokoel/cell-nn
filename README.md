@@ -8,10 +8,11 @@ and export Imaris, Excel and CSV results. Original scans and annotations are rea
 **[Analysis guide](docs/fish-analysis.md)** · **[Documentation](docs/README.md)** ·
 **[Models and evidence](docs/models.md)**
 
-![FISH Analysis displaying a microscopy scan](docs/images/analysis.png)
+![FISH Analysis reviewing consensus cell contours on an original microscopy scan](docs/images/analysis.png)
 
-*The running source app displaying an original scan and its saved manual annotations.
-This screenshot shows viewing, not an automatic analysis result.*
+*A completed both-detector consensus analysis, opened in the running app.
+Turquoise contours show retained cells; the original fluorescence remains visible.
+This example produced 20 cells and 21 signals.*
 
 ## Get started
 
@@ -21,6 +22,8 @@ Download the Windows EXE or Linux AppImage from the release page. Windows includ
 a CPU runtime. Linux downloads and verifies its neural runtime on first launch;
 allow about 11 GB free during setup and about 8 GB for the retained runtime.
 Later launches reuse the installed runtime. See [installation and releases](docs/releasing.md).
+For offline setup, download both matching `.runtime.part*` files beside the
+AppImage and keep their original filenames; the app detects them automatically.
 
 ### Run from source
 
@@ -44,7 +47,7 @@ for a minimal installation without neural dependencies.
 1. Add scans or a folder and select the scans to process.
 2. Check the cell and signal channel roles; fluorescence channel order varies by scan.
 3. Choose an output folder and review **Pipeline and settings**.
-4. Click **Analyze selected**, then inspect **Image**, **Distances** and **Cell counts**.
+4. Click **Analyze selected**, then inspect **Image**, **Distances**, **Cell counts** and **Results**.
 5. Keep exported `.imx` and `.ims` files together; open the `.imx` in Imaris.
 
 The default uses **both-detector consensus** and the **signal-center 3D U-Net**.
@@ -53,15 +56,31 @@ Other fixed presets and manual editing are described in the [Analysis guide](doc
 
 ```mermaid
 flowchart LR
-    A[Scan and channel roles] --> B[Cell contours]
-    B --> C[Signals inside cells]
-    C --> D[Retain cells with signals]
-    D --> E[Shortest 3D distances to borders]
-    E --> F[Imaris / Excel / CSV]
+    A[Scan + cell channel] --> B[Both-detector consensus · default]
+    A --> C[Fine-tuned StarDist 2D]
+    B --> D[3D StarDist + center/box detector<br/>Surface-loss contours + agreement gate]
+    C --> E[XY polygons linked into 3D cells]
+    D --> F[Roundness filter]
+    E --> F
+    F --> G[Signal-center 3D U-Net]
+    G --> H[Retain cells with signals]
+    H --> I[Shortest 3D distances to borders]
+    I --> J[Review + Imaris / Excel / CSV]
 ```
 
 Each stage runs in a separate worker process. Results are saved separately from
 source data; cancellation preserves completed runs.
+
+### Review contours and measurements
+
+| Inspect a signal and its nearest border | Review manual and program measurements |
+|---|---|
+| ![Signal A, nearest border B and editable cell contours in the running app](docs/images/editing.png) | ![Manual and automatic signal-to-border measurements in the Distances tab](docs/images/distances.png) |
+
+Select a measurement to locate its A–B segment in the image. Open
+**Annotations and editing** to inspect contours or adjust points; edited geometry,
+volumes, distances and exports stay synchronized. Manual annotations and automatic
+results can be shown separately. See the [review and export guide](docs/fish-analysis.md).
 
 ## Models and measured limits
 
@@ -69,11 +88,14 @@ All current checkpoints are in [`models/`](models/); their evaluation reports,
 plots and tables are in [`reports/`](reports/). Start with the [model inventory](docs/models.md)
 and [evaluation guide](docs/evaluation.md).
 
-![Signal model precision and recall on the fixed test cohort](docs/images/signal-models.png)
+![Both-detector consensus and fine-tuned StarDist 2D: matched volume and signal-to-border distance errors](docs/images/pipeline-comparison.png)
 
-*Historical signal-detector comparison on 228 reference signals with fixed cell
-masks. These scores do not measure the complete current consensus pipeline.
-[Source data and protocol](reports/signal-centers/README.md).*
+*Measurement evidence for the two cell presets on 71 historical test scans,
+with the signal-center U-Net and roundness gate of 0.72. Whiskers show 95%
+acquisition-bootstrap intervals. Matched cells/signals and channel protocols differ
+between reports, so these averages are not a paired ranking or whole-field detection
+accuracy. Sources: [correct-channel consensus](reports/consensus-correct-channels/README.md)
+and [fine-tuned StarDist 2D](reports/stardist2d/distances/README.md).*
 
 Incomplete manual annotations leave many detected cells unscored. Review real
 contours and channel choices before interpreting detection totals as accuracy.
