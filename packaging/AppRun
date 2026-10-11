@@ -3,7 +3,11 @@ set -eu
 APPDIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 INTERNAL="$APPDIR/usr/FISH-Analysis/_internal"
 if [ -f "$INTERNAL/runtime-cache.json" ]; then
-    FISH_RUNTIME_CACHE="$("$APPDIR/usr/FISH-Analysis/FISH-Analysis" --prepare-runtime)"
+    case "${1-}" in
+        --*|-m) progress="" ;;
+        *) progress="--progress" ;;
+    esac
+    FISH_RUNTIME_CACHE="$("$APPDIR/usr/FISH-Analysis/FISH-Analysis" --prepare-runtime $progress)"
     export FISH_RUNTIME_CACHE
     for lib in "$FISH_RUNTIME_CACHE"/nvidia/*/lib "$FISH_RUNTIME_CACHE"/nvidia/*/nvvm/lib64 "$FISH_RUNTIME_CACHE"/torch/lib "$FISH_RUNTIME_CACHE"; do
         if [ -d "$lib" ]; then

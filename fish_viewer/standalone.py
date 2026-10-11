@@ -44,7 +44,10 @@ def main():
     multiprocessing.freeze_support()
     arguments = sys.argv[1:]
     if arguments[:1] == ['--prepare-runtime']:
-        from .runtime_cache import prepare
+        if '--progress' in arguments:
+            from .runtime_setup import prepare_with_progress as prepare
+        else:
+            from .runtime_cache import prepare
         print(prepare(Path(sys._MEIPASS)))
         return 0
     if arguments[:1] == ['--check-runtime']:

@@ -20,7 +20,7 @@ RUNTIME_URL = "https://github.com/AppImage/type2-runtime/releases/download/20251
 RUNTIME_SHA256 = "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"
 
 
-def compress_runtime_libraries(internal):
+def compress_runtime_libraries(internal, output=None, tag=None):
     from fish_viewer.runtime_cache import cache_id
     candidates = []
     for path in sorted(internal.rglob('*')):
@@ -34,8 +34,8 @@ def compress_runtime_libraries(internal):
                 digest = hashlib.file_digest(stream, 'sha256').hexdigest()
             candidates.append(dict(path=name, size=path.stat().st_size, sha256=digest))
     target = internal / 'runtime-libraries.tar.xz'
-    with target.open('wb') as output:
-        process = subprocess.Popen(['xz', '-T2', '-6', '--lzma2=dict=64MiB', '-c'], stdin=subprocess.PIPE, stdout=output)
+    with target.open('wb') as compressed:
+        process = subprocess.Popen(['xz', '-T2', '-6', '--lzma2=dict=64MiB', '-c'], stdin=subprocess.PIPE, stdout=compressed)
         try:
             with tarfile.open(fileobj=process.stdin, mode='w|') as archive:
                 for item in candidates:
@@ -49,9 +49,42 @@ def compress_runtime_libraries(internal):
                 process.kill()
                 process.wait()
     (internal / 'runtime-cache.json').write_text(json.dumps(dict(id=cache_id(candidates), files=candidates)), encoding='utf-8')
+    if output is not None:
+        publish_runtime_archive(internal, output, tag)
     for item in candidates:
         (internal / item['path']).unlink()
-    print(json.dumps({'runtime_archive_bytes': target.stat().st_size}), flush=True)
+    print(json.dumps({'runtime_archive_bytes': sum(p.stat().st_size for p in output.glob('*.runtime.part*')) if output is not None else target.stat().st_size}), flush=True)
+
+
+def publish_runtime_archive(internal, output, tag):
+    manifest_path = internal / 'runtime-cache.json'
+    manifest = json.loads(manifest_path.read_text())
+    parts = []
+    limit = 1536 * 1024**2
+    with (internal / 'runtime-libraries.tar.xz').open('rb') as source:
+        index = 1
+        while True:
+            name = f'FISH-Analysis-{tag}-linux-x64.runtime.part{index:02d}'
+            target = output / name
+            digest = hashlib.sha256()
+            size = 0
+            with target.open('wb') as stream:
+                while size < limit:
+                    block = source.read(min(1024**2, limit - size))
+                    if not block:
+                        break
+                    stream.write(block)
+                    digest.update(block)
+                    size += len(block)
+            if not size:
+                target.unlink()
+                break
+            parts.append(dict(name=name, size=size, sha256=digest.hexdigest(),
+                              url=f'https://github.com/Rokoel/cell-nn/releases/download/{tag}/{name}'))
+            index += 1
+    manifest['parts'] = parts
+    manifest_path.write_text(json.dumps(manifest), encoding='utf-8')
+    (internal / 'runtime-libraries.tar.xz').unlink()
 
 
 def windows_crt():
@@ -168,7 +201,7 @@ def main():
             shutil.copy2(ROOT / "packaging" / source, appdir / name)
         (appdir / "AppRun").chmod(0o755)
         if args.cuda:
-            compress_runtime_libraries(appdir / 'usr/FISH-Analysis/_internal')
+            compress_runtime_libraries(appdir / 'usr/FISH-Analysis/_internal', output, args.tag)
         tool = (
             args.appimagetool.resolve()
             if args.appimagetool

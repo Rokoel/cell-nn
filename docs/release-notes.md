@@ -1,21 +1,25 @@
 # FISH Analysis v0.8.1
 
-The Linux AppImage now bundles CUDA libraries for **both TensorFlow cell
-contouring and PyTorch signal detection**. Choose auto/CPU/GPU under Pipeline
-and settings. Auto uses an available NVIDIA GPU and otherwise runs on CPU.
-A compatible host NVIDIA driver is required; Python and a separate CUDA toolkit
-are not required. The Windows EXE retains CPU inference and bundled Microsoft
-C++ runtime DLLs. CPU packages no longer expose an unsupported GPU option or
-restore an incompatible saved GPU selection.
+The Linux AppImage supports CUDA for **both TensorFlow cell contouring and
+PyTorch signal detection**. On first launch, it automatically downloads the
+neural runtime from this release and shows download/installation progress.
+Each download and extracted library is checked against SHA-256 hashes embedded
+in the AppImage. Models are included in the AppImage. Allow about 11 GB free
+for initial setup; later launches reuse about 8 GB of cached libraries offline.
+You only need to download and launch the AppImage; the `.runtime.part*` assets
+are fetched automatically, with no manual joining or installation.
 
-The AppImage uses stronger compression to fit the larger GPU runtime into a
-single GitHub release asset. Its first launch verifies and unpacks the embedded
-neural libraries into a reusable local cache (allow about 8 GB); there is no
-dependency download. `--check-runtime --device gpu` verifies a TensorFlow
-3D convolution and the default signal-center U-Net on CUDA in separate workers.
-GitHub Actions builds both platforms automatically and checks installed inference,
-model checkpoints, Imaris export and the single-sheet Excel export on CPU.
-GPU execution is checked separately on a machine with an NVIDIA GPU.
+Choose auto/CPU/GPU under Pipeline and settings. Auto uses an available NVIDIA
+GPU and otherwise runs on CPU. A compatible host NVIDIA driver is required;
+Python and a separate CUDA toolkit are not required. The Windows EXE retains
+CPU inference and bundled Microsoft C++ runtime DLLs. CPU packages no longer
+expose an unsupported GPU option or restore an incompatible saved selection.
+
+`--check-runtime --device gpu` verifies a TensorFlow 3D convolution and the
+default signal-center U-Net on CUDA in separate workers. GitHub Actions builds
+both platforms automatically and checks installed inference, model checkpoints,
+Imaris export and single-sheet Excel export on CPU. GPU execution is checked
+separately on a machine with an NVIDIA GPU.
 
 The models, default both-detector consensus pipeline and metrics are unchanged.
 

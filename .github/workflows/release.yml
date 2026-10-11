@@ -125,7 +125,9 @@ jobs:
           for key in ('PYTHONPATH', 'PYTHONHOME', 'FISH_SPOTS_PYTHON', 'VIRTUAL_ENV'):
               env.pop(key, None)
           env['APPIMAGE_EXTRACT_AND_RUN'] = '1'
+          env['FISH_RUNTIME_DOWNLOAD_DIR'] = str(binary.parent)
           with tempfile.TemporaryDirectory(prefix='fish-installed-') as clean:
+              env['XDG_CACHE_HOME'] = str(pathlib.Path(clean)/'cache')
               subprocess.run([str(binary), '--check-runtime', '--device', 'cpu'], cwd=clean, env=env, check=True, timeout=900)
               subprocess.run([str(binary), '--verify-models', '--require-latest-models', '--with-direct-signals'], cwd=clean, env=env, check=True, timeout=900)
               subprocess.run([str(binary), '--self-test', '--output', str(pathlib.Path(clean)/'smoke')], cwd=clean, env=env, check=True, timeout=900)
@@ -143,6 +145,7 @@ jobs:
             dist/*.exe
             dist/*.AppImage
             dist/*.build.json
+            dist/*.runtime.part*
           if-no-files-found: error
 
   publish:
@@ -169,7 +172,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          (cd release-assets && sha256sum *.exe *.AppImage *.build.json > SHA256SUMS.txt)
+          (cd release-assets && sha256sum *.exe *.AppImage *.build.json *.runtime.part* > SHA256SUMS.txt)
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release edit "$RELEASE_TAG" --title "FISH Analysis $RELEASE_TAG" \
               --notes-file docs/release-notes.md

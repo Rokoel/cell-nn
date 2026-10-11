@@ -6,9 +6,9 @@ No FISH scans or local training caches are required or distributed.
 
 The release contains `FISH-Analysis-v<version>-windows-x64.exe` and
 `FISH-Analysis-v<version>-linux-x64.AppImage`. Each file contains the GUI,
-Python, Qt/VTK, TensorFlow/PyTorch runtimes, Imaris export templates and
+Python, Qt/VTK, Imaris export templates and
 all current analysis preset models. Both-detector consensus and the signal-center
-3D U-Net remain the defaults. There is no first-run dependency download.
+3D U-Net remain the defaults. Linux downloads its verified neural runtime automatically on first launch, with a progress window.
 Windows includes the Visual Studio x64 redistributable DLLs app-locally, including
 `msvcp140.dll`, `vcruntime140.dll` and `vcruntime140_1.dll`; users do not need the
 separate runtime installer. Build manifests record dependency versions and model
@@ -28,16 +28,15 @@ Linux still needs a working desktop/OpenGL driver. If FUSE is unavailable, use
 `APPIMAGE_EXTRACT_AND_RUN=1 ./FISH-Analysis-v<version>-linux-x64.AppImage`.
 The Windows single-file application extracts its bundled libraries to a temporary
 folder on launch, so the first startup can take longer. Both formats need free
-space for their bundled libraries and analysis outputs. The Linux AppImage bundles
+space for their bundled libraries and analysis outputs. The Linux AppImage automatically installs
 CUDA 12 libraries for both neural backends and supports auto/CPU/GPU inference.
 A compatible NVIDIA driver must be installed on the host; no separate CUDA toolkit
 or Python installation is needed. Windows uses CPU inference and does not offer
 an unsupported GPU choice. Results and settings are saved outside the executable. On its first launch, the
-Linux AppImage verifies and unpacks its embedded neural libraries into
+Linux AppImage verifies and unpacks its automatically downloaded neural libraries into
 `~/.cache/fish-analysis/runtimes/` (or `$XDG_CACHE_HOME/fish-analysis/runtimes/`).
-Allow about 8 GB for this cache. Later launches reuse it; no network download is
-performed. This compression keeps the complete GPU app below GitHub’s release
-asset limit. Triton compilation is excluded because the bundled inference models
+Allow about 11 GB free during first-launch setup, then about 8 GB for the cache. Later launches reuse it; no further network download is
+performed. The runtime is stored as release assets under GitHub’s size limit and downloaded automatically; users do not join them manually. Triton compilation is excluded because the bundled inference models
 use normal TensorFlow/PyTorch execution.
 
 To check actual GPU execution in both bundled backends:
@@ -58,7 +57,7 @@ separate processes and fails if GPU mode cannot be used. `--device cpu` checks C
 4. `scripts/build_standalone.py` freezes that bundle using PyInstaller. Windows
    uses one-file mode; Linux wraps a directory build in an AppImage using the
    checksum-pinned upstream appimagetool 1.9.1. Linux first compresses large neural
-   libraries into a verified embedded archive; the launcher unpacks it once into
+   libraries into verified release assets; the launcher downloads and installs them once into
    a versioned cache before starting the neural workers.
 5. Actions runs the actual executable from a temporary directory outside the
    checkout, with external Python environment overrides removed. It verifies all
