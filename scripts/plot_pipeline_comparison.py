@@ -44,7 +44,7 @@ def main():
         axis.tick_params(length=0, labelcolor='#25364d', pad=8)
         axis.grid(axis='y', color='#e1e7ef', zorder=0)
         axis.set_axisbelow(True)
-    figure.text(.08, .94, 'Two cell pipelines. One measurement workflow.', fontsize=21, weight='bold', color='#192c43')
+    figure.text(.08, .94, 'Cell pipeline comparison', fontsize=21, weight='bold', color='#192c43')
     figure.text(.08, .87, '71 historical test scans · roundness ≥ 0.72 · signal-center 3D U-Net', fontsize=12, color='#596b80')
     figure.text(.08, .06, 'Whiskers: 95% acquisition-bootstrap intervals. Different matched subsets and channel protocols;\n'
                 'these report summaries are not a paired ranking or a measure of whole-field detection accuracy.',

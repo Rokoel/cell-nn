@@ -1,8 +1,15 @@
 # FISH Analysis
 
-Desktop analysis of Imaris microscopy scans: detect cell contours and fluorescent
-signals, measure the shortest 3D signal-to-cell-border distances, review annotations,
-and export Imaris, Excel and CSV results. Original scans and annotations are read-only.
+FISH Analysis is a set of desktop tools that helps researchers analyze Imaris
+microscopy scans by automating the tedious work of tracing cell contours, locating
+fluorescent signals, and measuring the shortest 3D distances from signals to cell
+volume surfaces. It is designed to support researchers, not replace their judgment:
+automatic results can be reviewed and corrected before use. The repository includes
+three main programs: **Analysis** processes scans, lets users review and edit results,
+and exports Imaris, Excel and CSV files; **Viewer** displays scans and annotations
+in 2D and 3D, applies saved models, and provides model-training tools;
+**Training Annotator** lets users paint cell-border examples for training data.
+Original scans and annotations are preserved; edits and results are saved separately.
 
 **[Download a release](https://github.com/Rokoel/cell-nn/releases/latest)** ·
 **[Analysis guide](docs/fish-analysis.md)** · **[Documentation](docs/README.md)** ·
