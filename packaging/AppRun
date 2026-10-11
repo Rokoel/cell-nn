@@ -13,7 +13,7 @@ if [ -d "$INTERNAL/nvidia" ]; then
     export FISH_CUDA_PATH_READY=1
     PATH="$INTERNAL/nvidia/cuda_nvcc/bin:$PATH"
     export PATH
-    XLA_FLAGS="${XLA_FLAGS:+$XLA_FLAGS }--xla_gpu_cuda_data_dir=$INTERNAL/nvidia/cuda_nvcc"
+    XLA_FLAGS="${XLA_FLAGS:+$XLA_FLAGS }--xla_gpu_cuda_data_dir=\"$INTERNAL/nvidia/cuda_nvcc\""
     export XLA_FLAGS
 fi
 exec "$APPDIR/usr/FISH-Analysis/FISH-Analysis" "$@"
