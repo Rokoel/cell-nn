@@ -65,6 +65,11 @@ def main():
         parser.error("Build on Windows x64 or Linux x64.")
     if args.cuda and sys.platform != 'linux':
         parser.error('CUDA packaging is supported on Linux only.')
+    if args.cuda:
+        if '+cu' not in importlib.metadata.version('torch'):
+            parser.error('Install CUDA-enabled PyTorch before using --cuda.')
+        for package in ('nvidia-cudnn-cu12', 'nvidia-cublas-cu12', 'nvidia-cuda-nvcc-cu12'):
+            importlib.metadata.version(package)
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     work = ROOT / "build/standalone"
@@ -156,6 +161,7 @@ def main():
                 "--no-appstream",
                 '--comp', 'xz' if args.cuda else 'zstd',
                 '--mksquashfs-opt', '-processors', '--mksquashfs-opt', '2',
+                '--mksquashfs-opt', '-b', '--mksquashfs-opt', '1048576',
                 "--runtime-file",
                 str(runtime),
                 str(appdir),

@@ -55,6 +55,17 @@ a = Analysis([str(root / 'packaging/entry.py')], pathex=[str(root)],
              excludes=['PyQt5', 'PyQt6', 'PySide2', 'tkinter', 'IPython', 'pytest',
                        'jax', 'jaxlib', 'nvidia', 'tensorboard'],
              noarchive=False)
+if os.name != 'nt':
+    # Dependency analysis also places package libraries at the bundle root.
+    # Keep one canonical copy: otherwise CUDA adds several GB of duplicates
+    # and may load a different cuDNN version from the root than from nvidia/.
+    canonical = {}
+    for destination, source, kind in a.binaries:
+        if kind == 'BINARY' and (destination.startswith('nvidia/') or destination.startswith('torch/lib/')):
+            canonical[Path(destination).name] = destination
+    a.binaries = [(destination, canonical[destination], 'SYMLINK')
+                  if '/' not in destination and destination in canonical else (destination, source, kind)
+                  for destination, source, kind in a.binaries]
 pyz = PYZ(a.pure)
 # torch JIT and TensorFlow need source files; their maintained hooks collect them.
 if os.name == 'nt':

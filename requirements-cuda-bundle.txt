@@ -2,6 +2,7 @@
 # Install after the CPU/test/build dependencies, then install CUDA torch with
 # --no-deps. Torch's exact NCCL pin conflicts with TF's >=2.27.7 requirement;
 # this shared set is verified by packaged inference in separate workers.
+tensorflow==2.21.0
 nvidia-cublas-cu12==12.9.2.10
 nvidia-cuda-cupti-cu12==12.9.79
 nvidia-cuda-nvcc-cu12==12.9.86
